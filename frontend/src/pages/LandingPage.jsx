@@ -65,7 +65,7 @@ export default function LandingPage() {
             </div>
 
             <div className="mt-10 flex items-center gap-6 text-sm text-zinc-500 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /> 150+ Problems</span>
+              <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /> 15,000+ Problems</span>
               <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500" /> 4-Round Interviews</span>
               <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500" /> Proctored</span>
             </div>

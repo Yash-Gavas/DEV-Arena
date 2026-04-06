@@ -2,3 +2,9 @@
 a[href*="emergentagent.com"][target="_blank"] {
     display: none !important;
 }
+div[style*="position: fixed"][style*="bottom"] > a[href*="emergentagent"] {
+    display: none !important;
+}
+a[style*="position: fixed"][style*="bottom: 16px"][style*="right: 16px"] {
+    display: none !important;
+}

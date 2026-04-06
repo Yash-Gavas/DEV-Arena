@@ -1,71 +1,81 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Line } from '@react-three/drei';
+import { OrbitControls, Text } from '@react-three/drei';
 import { Eye, ChevronRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import * as THREE from 'three';
 
-// === 3D Node Component ===
+// === 3D Node as Sphere ===
 function Node3D({ position, label, color = '#007AFF', isActive = false }) {
   const meshRef = useRef();
   useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y = state.clock.elapsedTime * 0.5;
-      if (isActive) {
-        meshRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.1);
-      }
+    if (meshRef.current && isActive) {
+      meshRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.1);
     }
   });
   return (
     <group position={position}>
       <mesh ref={meshRef}>
-        <sphereGeometry args={[0.35, 32, 32]} />
-        <meshStandardMaterial color={color} emissive={isActive ? color : '#000'} emissiveIntensity={isActive ? 0.5 : 0.1} metalness={0.3} roughness={0.4} />
+        <sphereGeometry args={[0.35, 24, 24]} />
+        <meshStandardMaterial color={color} emissive={isActive ? color : '#111'} emissiveIntensity={isActive ? 0.5 : 0.1} metalness={0.3} roughness={0.4} />
       </mesh>
-      <Text position={[0, 0, 0.5]} fontSize={0.25} color="white" anchorX="center" anchorY="middle" font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxjOVeR.woff">
+      <Text position={[0, 0, 0.45]} fontSize={0.22} color="white" anchorX="center" anchorY="middle">
         {label}
       </Text>
     </group>
   );
 }
 
-// === Edge Component ===
-function Edge3D({ start, end, color = '#333' }) {
-  return <Line points={[start, end]} color={color} lineWidth={2} />;
+// === Edge as thin Cylinder between two points ===
+function Edge3D({ start, end, color = '#007AFF' }) {
+  const startVec = new THREE.Vector3(...start);
+  const endVec = new THREE.Vector3(...end);
+  const mid = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+  const direction = new THREE.Vector3().subVectors(endVec, startVec);
+  const length = direction.length();
+  const orientation = new THREE.Quaternion();
+  orientation.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+
+  return (
+    <mesh position={[mid.x, mid.y, mid.z]} quaternion={orientation}>
+      <cylinderGeometry args={[0.03, 0.03, length, 8]} />
+      <meshStandardMaterial color={color} opacity={0.4} transparent />
+    </mesh>
+  );
 }
 
-// === Binary Tree Visualization ===
+// === Binary Tree ===
 function BinaryTreeViz({ data, activeIndex }) {
   const nodes = [];
   const edges = [];
-  const buildTree = (arr, idx, x, y, spread) => {
+  const build = (arr, idx, x, y, spread) => {
     if (idx >= arr.length || arr[idx] === null) return;
     const pos = [x, y, 0];
     nodes.push({ pos, label: String(arr[idx]), isActive: idx === activeIndex });
-    const leftIdx = 2 * idx + 1;
-    const rightIdx = 2 * idx + 2;
-    if (leftIdx < arr.length && arr[leftIdx] !== null) {
-      const childPos = [x - spread, y - 1.5, 0];
-      edges.push({ start: pos, end: childPos });
-      buildTree(arr, leftIdx, x - spread, y - 1.5, spread * 0.55);
+    const left = 2 * idx + 1;
+    const right = 2 * idx + 2;
+    if (left < arr.length && arr[left] !== null) {
+      const cp = [x - spread, y - 1.5, 0];
+      edges.push({ start: pos, end: cp });
+      build(arr, left, x - spread, y - 1.5, spread * 0.55);
     }
-    if (rightIdx < arr.length && arr[rightIdx] !== null) {
-      const childPos = [x + spread, y - 1.5, 0];
-      edges.push({ start: pos, end: childPos });
-      buildTree(arr, rightIdx, x + spread, y - 1.5, spread * 0.55);
+    if (right < arr.length && arr[right] !== null) {
+      const cp = [x + spread, y - 1.5, 0];
+      edges.push({ start: pos, end: cp });
+      build(arr, right, x + spread, y - 1.5, spread * 0.55);
     }
   };
-  buildTree(data, 0, 0, 3, 3);
+  build(data, 0, 0, 3, 3);
   return (
     <>
-      {edges.map((e, i) => <Edge3D key={`e${i}`} start={e.start} end={e.end} color="#007AFF33" />)}
+      {edges.map((e, i) => <Edge3D key={`e${i}`} start={e.start} end={e.end} color="#007AFF" />)}
       {nodes.map((n, i) => <Node3D key={`n${i}`} position={n.pos} label={n.label} isActive={n.isActive} />)}
     </>
   );
 }
 
-// === Linked List Visualization ===
+// === Linked List ===
 function LinkedListViz({ data, activeIndex }) {
   return (
     <>
@@ -74,7 +84,7 @@ function LinkedListViz({ data, activeIndex }) {
         return (
           <group key={i}>
             <Node3D position={[x, 0, 0]} label={String(val)} color="#22C55E" isActive={i === activeIndex} />
-            {i < data.length - 1 && <Edge3D start={[x + 0.4, 0, 0]} end={[x + 1.6, 0, 0]} color="#22C55E44" />}
+            {i < data.length - 1 && <Edge3D start={[x + 0.4, 0, 0]} end={[x + 1.6, 0, 0]} color="#22C55E" />}
           </group>
         );
       })}
@@ -82,7 +92,7 @@ function LinkedListViz({ data, activeIndex }) {
   );
 }
 
-// === Array Visualization ===
+// === Array ===
 function ArrayViz({ data, activeIndex }) {
   return (
     <>
@@ -92,12 +102,12 @@ function ArrayViz({ data, activeIndex }) {
           <group key={i}>
             <mesh position={[x, 0, 0]}>
               <boxGeometry args={[0.9, 0.9, 0.9]} />
-              <meshStandardMaterial color={i === activeIndex ? '#EAB308' : '#FF3B30'} emissive={i === activeIndex ? '#EAB308' : '#000'} emissiveIntensity={i === activeIndex ? 0.3 : 0} metalness={0.2} roughness={0.5} />
+              <meshStandardMaterial color={i === activeIndex ? '#EAB308' : '#FF3B30'} emissive={i === activeIndex ? '#EAB308' : '#111'} emissiveIntensity={i === activeIndex ? 0.3 : 0} metalness={0.2} roughness={0.5} />
             </mesh>
-            <Text position={[x, 0, 0.6]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
+            <Text position={[x, 0, 0.55]} fontSize={0.28} color="white" anchorX="center" anchorY="middle">
               {String(val)}
             </Text>
-            <Text position={[x, -0.8, 0]} fontSize={0.15} color="#666" anchorX="center" anchorY="middle">
+            <Text position={[x, -0.75, 0]} fontSize={0.15} color="#666" anchorX="center" anchorY="middle">
               [{i}]
             </Text>
           </group>
@@ -107,7 +117,7 @@ function ArrayViz({ data, activeIndex }) {
   );
 }
 
-// === Stack Visualization ===
+// === Stack ===
 function StackViz({ data, activeIndex }) {
   return (
     <>
@@ -117,7 +127,7 @@ function StackViz({ data, activeIndex }) {
           <group key={i}>
             <mesh position={[0, y, 0]}>
               <boxGeometry args={[1.5, 0.8, 0.8]} />
-              <meshStandardMaterial color={i === data.length - 1 ? '#A855F7' : '#6B21A8'} emissive={i === activeIndex ? '#A855F7' : '#000'} emissiveIntensity={i === activeIndex ? 0.3 : 0} metalness={0.2} roughness={0.5} />
+              <meshStandardMaterial color={i === data.length - 1 ? '#A855F7' : '#6B21A8'} emissive={i === activeIndex ? '#A855F7' : '#111'} emissiveIntensity={i === activeIndex ? 0.3 : 0} metalness={0.2} roughness={0.5} />
             </mesh>
             <Text position={[0, y, 0.5]} fontSize={0.25} color="white" anchorX="center" anchorY="middle">
               {String(val)}
@@ -125,16 +135,34 @@ function StackViz({ data, activeIndex }) {
           </group>
         );
       })}
-      <Text position={[0, (data.length * 0.55) + 0.5, 0]} fontSize={0.2} color="#A855F7" anchorX="center">TOP</Text>
+      <Text position={[0, (data.length * 0.55) + 0.5, 0]} fontSize={0.2} color="#A855F7" anchorX="center">
+        TOP
+      </Text>
+    </>
+  );
+}
+
+// === Graph Visualization ===
+function GraphViz({ activeIndex }) {
+  const positions = [
+    [-2, 2, 0], [2, 2, 0], [3, 0, 0], [1, -2, 0], [-1, -2, 0], [-3, 0, 0]
+  ];
+  const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const graphEdges = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,0],[0,3],[1,4]];
+  return (
+    <>
+      {graphEdges.map(([a, b], i) => <Edge3D key={`ge${i}`} start={positions[a]} end={positions[b]} color="#06B6D4" />)}
+      {positions.map((pos, i) => <Node3D key={`gn${i}`} position={pos} label={labels[i]} color="#06B6D4" isActive={i === activeIndex} />)}
     </>
   );
 }
 
 const DS_OPTIONS = [
-  { key: 'array', label: 'Array', data: [5, 3, 8, 1, 9, 2, 7, 4], desc: 'Linear data structure storing elements in contiguous memory. O(1) access by index.' },
-  { key: 'linkedlist', label: 'Linked List', data: [1, 2, 3, 4, 5, 6], desc: 'Nodes connected via pointers. O(1) insert/delete at head, O(n) search.' },
-  { key: 'binarytree', label: 'Binary Tree', data: [10, 5, 15, 3, 7, 12, 20, 1, 4], desc: 'Each node has at most 2 children. BST: left < parent < right.' },
-  { key: 'stack', label: 'Stack (LIFO)', data: [10, 20, 30, 40, 50], desc: 'Last-In-First-Out. Push/Pop from top in O(1). Used in DFS, recursion, undo.' },
+  { key: 'array', label: 'Array', data: [5, 3, 8, 1, 9, 2, 7, 4], desc: 'Linear structure. O(1) access by index. O(n) insert/delete.' },
+  { key: 'linkedlist', label: 'Linked List', data: [1, 2, 3, 4, 5, 6], desc: 'Nodes with pointers. O(1) insert at head. O(n) search.' },
+  { key: 'binarytree', label: 'Binary Tree', data: [10, 5, 15, 3, 7, 12, 20, 1, 4], desc: 'BST: left < parent < right. O(log n) search/insert.' },
+  { key: 'stack', label: 'Stack (LIFO)', data: [10, 20, 30, 40, 50], desc: 'Last-In-First-Out. O(1) push/pop. DFS, recursion, undo.' },
+  { key: 'graph', label: 'Graph', data: [0, 1, 2, 3, 4, 5], desc: 'Nodes + edges. BFS/DFS traversal. Shortest path, cycles.' },
 ];
 
 export default function DSAVisualizer() {
@@ -162,28 +190,28 @@ export default function DSAVisualizer() {
           <h1 className="text-2xl sm:text-3xl tracking-tight font-bold font-['Chivo'] flex items-center gap-2">
             <Eye className="w-7 h-7 text-blue-500" /> 3D Data Structure Visualizer
           </h1>
-          <p className="text-zinc-400 text-sm mt-1">Interactive 3D visualization of common data structures</p>
+          <p className="text-zinc-400 text-sm mt-1">Interactive 3D visualization - drag to rotate, scroll to zoom</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           {DS_OPTIONS.map(ds => (
             <button
               key={ds.key}
               onClick={() => { setSelectedDS(ds); setActiveIndex(-1); }}
               data-testid={`ds-${ds.key}`}
-              className={`p-4 rounded-md border text-left transition-all ${
+              className={`p-3 rounded-md border text-left transition-all ${
                 selectedDS.key === ds.key
                   ? 'bg-blue-600/10 border-blue-500/40 text-blue-400'
                   : 'bg-[#141414] border-white/10 text-zinc-300 hover:border-white/25'
               }`}
             >
               <p className="text-sm font-semibold">{ds.label}</p>
-              <p className="text-[10px] text-zinc-500 mt-1">{ds.desc.slice(0, 60)}...</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2">{ds.desc}</p>
             </button>
           ))}
         </div>
 
-        <Card className="bg-[#141414] border-white/10 mb-6">
+        <Card className="bg-[#141414] border-white/10 mb-4">
           <CardContent className="p-0">
             <div className="h-[450px] rounded-md overflow-hidden bg-black">
               <Canvas camera={{ position: [0, 0, 10], fov: 50 }}>
@@ -194,6 +222,7 @@ export default function DSAVisualizer() {
                 {selectedDS.key === 'linkedlist' && <LinkedListViz data={selectedDS.data} activeIndex={activeIndex} />}
                 {selectedDS.key === 'binarytree' && <BinaryTreeViz data={selectedDS.data} activeIndex={activeIndex} />}
                 {selectedDS.key === 'stack' && <StackViz data={selectedDS.data} activeIndex={activeIndex} />}
+                {selectedDS.key === 'graph' && <GraphViz activeIndex={activeIndex} />}
                 <OrbitControls enableDamping dampingFactor={0.05} />
               </Canvas>
             </div>
@@ -202,22 +231,11 @@ export default function DSAVisualizer() {
                 <p className="text-sm font-semibold">{selectedDS.label}</p>
                 <p className="text-xs text-zinc-400 mt-0.5">{selectedDS.desc}</p>
               </div>
-              <Button
-                data-testid="animate-ds-btn"
-                onClick={animate}
-                disabled={animating}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
-              >
-                {animating ? 'Animating...' : 'Traverse'} <ChevronRight className="w-3 h-3 ml-1" />
+              <Button data-testid="animate-ds-btn" onClick={animate} disabled={animating}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs">
+                {animating ? 'Traversing...' : 'Traverse'} <ChevronRight className="w-3 h-3 ml-1" />
               </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-[#141414] border-white/10">
-          <CardContent className="p-4">
-            <p className="text-xs text-zinc-500 mb-2">Data: [{selectedDS.data.join(', ')}]</p>
-            <p className="text-xs text-zinc-400">Drag to rotate, scroll to zoom, right-click to pan. Click "Traverse" to see the animation.</p>
           </CardContent>
         </Card>
       </div>
