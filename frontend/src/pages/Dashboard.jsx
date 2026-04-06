@@ -45,8 +45,8 @@ export default function Dashboard() {
 
   const quickActions = [
     { label: 'Start Interview', desc: 'Face the AI interviewer', icon: BrainCircuit, path: '/interview', color: 'bg-blue-600 hover:bg-blue-500' },
-    { label: 'Code IDE', desc: 'Solve DSA problems', icon: Code2, path: '/ide', color: 'bg-[#1E1E1E] hover:bg-[#252525] border border-white/10' },
-    { label: 'DSA Mentor', desc: 'AI chatbot helper', icon: BookOpen, path: '/chatbot', color: 'bg-[#1E1E1E] hover:bg-[#252525] border border-white/10' },
+    { label: 'Solve Problems', desc: 'DSA with built-in IDE & AI help', icon: Code2, path: '/problems', color: 'bg-[#1E1E1E] hover:bg-[#252525] border border-white/10' },
+    { label: 'Resources', desc: 'CS fundamentals & guides', icon: BookOpen, path: '/resources', color: 'bg-[#1E1E1E] hover:bg-[#252525] border border-white/10' },
   ];
 
   return (

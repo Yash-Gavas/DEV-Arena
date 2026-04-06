@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Search, Filter, ChevronLeft, ChevronRight, Code2 } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Code2 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Card, CardContent } from '../components/ui/card';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,8 +22,8 @@ export default function DSAProblems() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     axios.get(`${API}/problems/meta`, { withCredentials: true }).then(r => setMeta(r.data)).catch(() => {});
@@ -152,7 +152,7 @@ export default function DSAProblems() {
                     {problems.map((p, i) => (
                       <tr
                         key={p.problem_id}
-                        onClick={() => setSelected(p)}
+                        onClick={() => navigate(`/problems/${p.problem_id}`)}
                         data-testid={`problem-row-${p.problem_id}`}
                         className="border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors"
                       >
@@ -205,35 +205,6 @@ export default function DSAProblems() {
             )}
           </CardContent>
         </Card>
-
-        {/* Problem Detail Dialog */}
-        <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-          <DialogContent className="bg-[#141414] border-white/10 max-w-2xl" data-testid="problem-dialog">
-            <DialogHeader>
-              <DialogTitle className="font-['Chivo'] text-xl flex items-center gap-3">
-                {selected?.title}
-                <Badge className={`text-xs ${diffColors[selected?.difficulty] || ''}`}>{selected?.difficulty}</Badge>
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline" className="border-white/20 text-zinc-300">Topic: {selected?.topic}</Badge>
-                <Badge variant="outline" className="border-blue-500/30 text-blue-400">Pattern: {selected?.pattern}</Badge>
-              </div>
-              <p className="text-zinc-300 text-sm leading-relaxed">{selected?.description}</p>
-              {selected?.companies && (
-                <div>
-                  <p className="text-xs text-zinc-500 mb-2">Asked at:</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {selected.companies.map(c => (
-                      <span key={c} className="text-xs px-2 py-1 bg-white/5 rounded text-zinc-300">{c}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );

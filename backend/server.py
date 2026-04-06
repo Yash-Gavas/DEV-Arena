@@ -391,23 +391,99 @@ Use markdown formatting. Include code examples when helpful. Be encouraging but 
     response = await chat.send_message(UserMessage(text=data.message))
     return {"response": response}
 
+# ==================== TEST CASES ====================
+@api_router.get("/problems/{problem_id}/testcases")
+async def get_testcases(problem_id: str, request: Request):
+    await get_current_user(request)
+    problem = await db.dsa_problems.find_one({"problem_id": problem_id}, {"_id": 0})
+    if not problem:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    cached = await db.testcases.find_one({"problem_id": problem_id}, {"_id": 0})
+    if cached:
+        return {"testcases": cached["testcases"]}
+    system = f"""Generate test cases for this DSA problem. Return ONLY a JSON array of test case objects.
+Each test case must have: "input" (string), "expected_output" (string), "explanation" (string, 1 sentence).
+Generate exactly 3 test cases: 1 simple, 1 medium, 1 edge case.
+
+Problem: {problem['title']}
+Description: {problem['description']}
+Difficulty: {problem['difficulty']}
+Topic: {problem.get('topic','')}
+
+Return ONLY valid JSON array, no markdown, no explanation outside the JSON."""
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"tc_{uuid.uuid4().hex[:8]}",
+                    system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = await chat.send_message(UserMessage(text="Generate test cases now."))
+    try:
+        rt = response.strip()
+        if "```json" in rt: rt = rt.split("```json")[1].split("```")[0].strip()
+        elif "```" in rt: rt = rt.split("```")[1].split("```")[0].strip()
+        testcases = json.loads(rt)
+        if not isinstance(testcases, list):
+            testcases = [{"input": "N/A", "expected_output": "N/A", "explanation": "Auto-generated"}]
+    except Exception:
+        testcases = [{"input": "Example input", "expected_output": "Example output", "explanation": "Check the problem description for details"}]
+    await db.testcases.update_one(
+        {"problem_id": problem_id},
+        {"$set": {"problem_id": problem_id, "testcases": testcases, "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"testcases": testcases}
+
+# ==================== PROBLEM CHATBOT (CONTEXTUAL) ====================
+@api_router.post("/problems/{problem_id}/chat")
+async def problem_chat(problem_id: str, data: ChatRequest, request: Request):
+    user = await get_current_user(request)
+    problem = await db.dsa_problems.find_one({"problem_id": problem_id}, {"_id": 0})
+    if not problem:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    system = f"""You are DEV-Arena's AI Mentor helping with a specific problem.
+
+Problem: {problem['title']}
+Difficulty: {problem['difficulty']}
+Topic: {problem.get('topic','')}
+Pattern: {problem.get('pattern','')}
+Description: {problem['description']}
+
+Rules:
+- Give hints, not full solutions unless explicitly asked
+- Explain approach step by step
+- Use the specific problem context in your answers
+- If user shares code, help debug it
+- Explain time/space complexity when relevant
+- Use markdown formatting with code blocks"""
+    if data.context:
+        system += f"\n\nConversation so far:\n{data.context}"
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"pchat_{user['user_id']}_{uuid.uuid4().hex[:6]}",
+                    system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = await chat.send_message(UserMessage(text=data.message))
+    return {"response": response}
+
 # ==================== CODE EVALUATION ====================
 @api_router.post("/code/evaluate")
 async def evaluate_code(data: CodeSubmission, request: Request):
     user = await get_current_user(request)
     problem = await db.dsa_problems.find_one({"problem_id": data.problem_id}, {"_id": 0})
     if not problem: raise HTTPException(status_code=404, detail="Problem not found")
-    system = f"""You are a code evaluator. Evaluate the submitted code for the problem.
+    cached_tc = await db.testcases.find_one({"problem_id": data.problem_id}, {"_id": 0})
+    tc_context = ""
+    if cached_tc and cached_tc.get("testcases"):
+        tc_context = "\n\nTest Cases to evaluate against:\n" + json.dumps(cached_tc["testcases"], indent=2)
+    system = f"""You are a strict code evaluator. Evaluate the submitted code for the problem.
 
 Problem: {problem['title']}
 Description: {problem['description']}
 Difficulty: {problem['difficulty']}
+Topic: {problem.get('topic','')}
+Pattern: {problem.get('pattern','')}{tc_context}
 
-Evaluate and return JSON:
-{{"passed": true/false, "score": <0-100>, "time_complexity": "<O(...)>", "space_complexity": "<O(...)>", "feedback": "<detailed feedback>", "test_results": [{{"input": "<test>", "expected": "<expected>", "actual": "<actual>", "passed": true/false}}], "suggestions": ["<suggestion1>", "<suggestion2>"]}}"""
+IMPORTANT: Actually trace through the code logic mentally for each test case. Determine if the code would produce the correct output.
+
+Return ONLY valid JSON (no markdown):
+{{"passed": true/false, "score": <0-100>, "time_complexity": "<O(...)>", "space_complexity": "<O(...)>", "feedback": "<detailed feedback>", "test_results": [{{"input": "<test input>", "expected": "<expected output>", "actual": "<what the code would produce>", "passed": true/false}}], "suggestions": ["<suggestion1>", "<suggestion2>"]}}"""
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"eval_{uuid.uuid4().hex[:8]}",
                     system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
-    response = await chat.send_message(UserMessage(text=f"Language: {data.language}\n\nCode:\n{data.code}"))
+    response = await chat.send_message(UserMessage(text=f"Language: {data.language}\n\nCode:\n```{data.language}\n{data.code}\n```"))
     try:
         rt = response.strip()
         if "```json" in rt: rt = rt.split("```json")[1].split("```")[0].strip()
@@ -420,6 +496,8 @@ Evaluate and return JSON:
         "problem_id": data.problem_id, "code": data.code, "language": data.language,
         "result": result, "timestamp": datetime.now(timezone.utc).isoformat()
     })
+    if result.get("passed"):
+        await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"problems_solved": 1}})
     return result
 
 # ==================== SQL PLAYGROUND ====================

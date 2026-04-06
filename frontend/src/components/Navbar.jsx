@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Code2, LayoutDashboard, BookOpen, BrainCircuit, User, LogOut, Swords, Terminal, Database, MessageCircle, Eye, Menu, X } from 'lucide-react';
+import { Code2, LayoutDashboard, BookOpen, BrainCircuit, LogOut, Swords, Database, Eye, Menu, X } from 'lucide-react';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/interview', label: 'Interview', icon: BrainCircuit },
-  { path: '/problems', label: 'DSA Bank', icon: Code2 },
-  { path: '/ide', label: 'IDE', icon: Terminal },
-  { path: '/sql', label: 'SQL', icon: Database },
-  { path: '/chatbot', label: 'Mentor', icon: MessageCircle },
+  { path: '/problems', label: 'Problems', icon: Code2 },
+  { path: '/sql', label: 'SQL Lab', icon: Database },
   { path: '/visualizer', label: '3D View', icon: Eye },
   { path: '/resources', label: 'Resources', icon: BookOpen },
 ];
@@ -32,7 +30,7 @@ export default function Navbar() {
 
           <div className="hidden lg:flex items-center gap-0.5">
             {navItems.map(item => {
-              const isActive = location.pathname === item.path;
+              const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
               return (
                 <Link
                   key={item.path}
@@ -66,12 +64,11 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile nav */}
       {mobileOpen && (
         <div className="lg:hidden bg-black/95 backdrop-blur-xl border-t border-white/5 py-2 px-4">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {navItems.map(item => {
-              const isActive = location.pathname === item.path;
+              const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
               return (
                 <Link
                   key={item.path}

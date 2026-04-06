@@ -11,9 +11,8 @@ import AIInterview from "./pages/AIInterview";
 import InterviewReport from "./pages/InterviewReport";
 import Profile from "./pages/Profile";
 import Resources from "./pages/Resources";
-import CodeIDE from "./pages/CodeIDE";
+import ProblemWorkspace from "./pages/ProblemWorkspace";
 import SQLPlayground from "./pages/SQLPlayground";
-import DSAChatbot from "./pages/DSAChatbot";
 import DSAVisualizer from "./pages/DSAVisualizer";
 import { Toaster } from "./components/ui/sonner";
 
@@ -34,9 +33,8 @@ function AppRouter() {
         <Route path="/reports/:reportId" element={<ProtectedRoute><InterviewReport /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
-        <Route path="/ide" element={<ProtectedRoute><CodeIDE /></ProtectedRoute>} />
+        <Route path="/problems/:problemId" element={<ProtectedRoute><ProblemWorkspace /></ProtectedRoute>} />
         <Route path="/sql" element={<ProtectedRoute><SQLPlayground /></ProtectedRoute>} />
-        <Route path="/chatbot" element={<ProtectedRoute><DSAChatbot /></ProtectedRoute>} />
         <Route path="/visualizer" element={<ProtectedRoute><DSAVisualizer /></ProtectedRoute>} />
       </Routes>
       <Toaster />
