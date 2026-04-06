@@ -1,0 +1,78 @@
+{
+  "theme": "Dark",
+  "archetype": "Archetype 2: Performance Pro",
+  "colors": {
+    "background_primary": "#0A0A0A",
+    "background_secondary": "#141414",
+    "background_tertiary": "#1E1E1E",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "accent_primary": "#007AFF",
+    "accent_secondary": "#FF3B30",
+    "border_default": "rgba(255, 255, 255, 0.1)",
+    "border_hover": "rgba(255, 255, 255, 0.25)",
+    "status_success": "#22C55E",
+    "status_warning": "#EAB308",
+    "status_error": "#FF3B30"
+  },
+  "typography": {
+    "heading_font": "Chivo",
+    "body_font": "IBM Plex Sans",
+    "mono_font": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-black",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl tracking-tight font-semibold",
+      "body": "text-base leading-relaxed text-zinc-300",
+      "labels": "text-xs tracking-[0.2em] uppercase font-bold text-zinc-400"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous Spacing (p-8 to p-12 for containers) to isolate focus.",
+    "marketing_grid": "MODE A: TETRIS GRID (grid-cols-1 md:grid-cols-12, gap-8)",
+    "dashboard_grid": "MODE B: CONTROL ROOM GRID (grid-cols-1 md:grid-cols-4, gap-4)",
+    "border_radius": "max 8px (rounded-md). Crisp, tactical edges. No overly soft curves."
+  },
+  "surface_strategies": {
+    "marketing_hero": "Dark Obsidian background with subtle grid overlay. Heavy typography.",
+    "dashboard_cards": "Flat background (#141414), 1px solid border (border-white/10), no shadows. Hover: -translate-y-1, border-white/25.",
+    "navigation": "Crystal Glass: bg-black/60, backdrop-blur-xl, border-b border-white/10.",
+    "code_editor_panels": "Retro-Futurism: Deep black (#000000) with 1px border-blue-500/30."
+  },
+  "components": {
+    "buttons": "Sharp edges, 1px inner glow. Primary: bg-blue-600 hover:bg-blue-500 text-white. Secondary: bg-transparent border border-white/10 hover:border-white/30 text-white.",
+    "forms": "Shadcn highly customized. Inputs: bg-black border-white/10 text-white focus:ring-1 focus:ring-blue-500 rounded-sm.",
+    "charts": "Shadcn/Recharts using Volt Blue and Electric Blaze on dark transparent backgrounds.",
+    "3d_visualizer": "Use React Three Fiber (@react-three/fiber) + Drei (@react-three/drei). Dark background environment, glowing neon blue/green geometric nodes (meshStandardMaterial with emissive properties)."
+  },
+  "animations": {
+    "page_transitions": "Framer Motion, subtle opacity and y-axis slide (20px).",
+    "scrolling": "Lenis for smooth scrolling on marketing pages.",
+    "micro_interactions": "Hover states on all cards and buttons. Fast, crisp transitions (0.15s ease-in-out)."
+  },
+  "icons": {
+    "library": "lucide-react for UI icons, @icons-pack/react-simple-icons for company logos (Google, Meta, Amazon, etc.).",
+    "style": "1.5 stroke width, consistent sizing."
+  },
+  "media": {
+    "hero_background": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/808f257a-41bf-4244-a650-c63e9d50cfe0/images/ad7b2e61289a1f3e868b3f78fe20c6c46b346ea94d5f35c2b2f69c0b7bd404d3.png",
+      "description": "Abstract 3D render of glowing neural networks and data structures. Use for Landing Page hero background.",
+      "overlay": "bg-black/50 to bg-gradient-to-r from-black/90 via-black/60 to-transparent for text readability."
+    },
+    "ai_interviewer": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/808f257a-41bf-4244-a650-c63e9d50cfe0/images/9926d6aa9334a206d34eda3e3941143c62da0d12515ba175884c395792e48357.png",
+      "description": "Sleek, futuristic AI avatar portrait. Use for the AI Interviewer persona in the interview simulation view."
+    },
+    "coding_context": {
+      "url": "https://images.pexels.com/photos/16018144/pexels-photo-16018144.jpeg",
+      "description": "Silhouette of a programmer coding in a dark room. Use for \"Proctoring\" or \"Intense Focus\" section backgrounds."
+    }
+  },
+  "special_features_instructions": {
+    "3d_data_structures": "Render binary trees and graphs using @react-three/fiber. Use Line/QuadraticBezierLine for edges and Sphere for nodes. Highlight active nodes by changing emissive color.",
+    "proctoring_ui": "Show a persistent 'Proctoring Active' pill in the header with a pulsing red or green dot. Use browser Page Visibility API to detect tab switches and log them.",
+    "problem_bank_table": "Dense data table using Control Room Grid strategy. Columns: Status, Title, Pattern (tag), Difficulty (colored pill), Company (logo icon).",
+    "ai_chat_interface": "Split pane view: Left side is code editor, Right side is AI chat. Terminal retro-futurism vibe."
+  }
+}
