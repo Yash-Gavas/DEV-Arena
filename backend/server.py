@@ -168,17 +168,23 @@ async def get_problem(problem_id: str):
 
 # ==================== AI INTERVIEW ====================
 ROUND_CONFIG = [
-    {"round": 1, "name": "DSA & Coding", "desc": "Data Structures and Algorithms coding questions"},
-    {"round": 2, "name": "Projects & Experience", "desc": "Discussion about projects, experience, and approach"},
-    {"round": 3, "name": "Core CS Fundamentals", "desc": "OS, DBMS, CN, SQL - scenario-based questions"},
-    {"round": 4, "name": "System Design", "desc": "System design and architecture discussion"}
+    {"round": 1, "name": "Introduction & DSA", "desc": "Self-introduction followed by Data Structures and Algorithms coding questions"},
+    {"round": 2, "name": "Projects & Core Subjects", "desc": "Discussion about projects, experience, and core CS fundamentals"},
+    {"round": 3, "name": "Managerial & System Design", "desc": "Behavioral questions and system design discussion"},
+    {"round": 4, "name": "HR Round", "desc": "Cultural fit, career goals, and closing discussion"}
 ]
 
 ROUND_GUIDELINES = {
-    1: "Ask algorithm/data structure problems. Present problems with input/output examples. Ask about complexity. Patterns: sliding window, two pointers, binary search, DFS/BFS, DP, greedy.",
-    2: "Ask about their most impactful project. Probe technical decisions. Ask about challenges, teamwork, specific contributions.",
-    3: "OS: Process vs Thread, Deadlock, Memory. DBMS: ACID, Normalization, Indexing. CN: TCP/UDP, HTTP, DNS. SQL: JOINs, optimization. Ask scenarios, not definitions.",
-    4: "Ask to design a real system (URL shortener, chat, notification service). Probe scalability, availability, consistency, caching, API design, trade-offs."
+    1: """CRITICAL: Start by introducing yourself briefly as Alex Chen, then IMMEDIATELY ask the candidate to introduce themselves - their background, education, experience, and what excites them about tech. 
+After their introduction, transition to DSA. Ask algorithm/data structure problems with input/output examples. Ask about complexity. 
+When presenting a coding problem, format it clearly with: Problem Title, Description, Examples (Input/Output), and Constraints. Tell the candidate to solve it in the code editor on the right.
+Patterns: sliding window, two pointers, binary search, DFS/BFS, DP, greedy.""",
+    2: """Ask about their most impactful project. Probe technical decisions, architecture choices. Ask about challenges, teamwork, specific contributions.
+Then transition to Core CS: OS (Process vs Thread, Deadlock, Memory), DBMS (ACID, Normalization, Indexing), CN (TCP/UDP, HTTP, DNS), SQL (JOINs, optimization). Ask scenarios, not definitions.""",
+    3: """Behavioral/Managerial: Ask about handling conflicts, tight deadlines, leadership, mentoring. Use STAR format probing.
+System Design: Ask to design a real system (URL shortener, chat app, notification service). Probe scalability, availability, consistency, caching, API design, trade-offs.""",
+    4: """HR Round: Ask about career goals, why this company/role, salary expectations, relocation willingness, work-life balance views, strengths/weaknesses.
+Be warm and conversational. Close the interview professionally, thank the candidate, and explain next steps."""
 }
 
 def build_system_prompt(interview, messages, round_num):
@@ -223,7 +229,7 @@ async def start_interview(data: InterviewCreate, request: Request):
         system_prompt += f"\n\nPrevious interviews - avoid these:\n" + "\n".join([f"- {m['content'][:80]}" for m in prev_interviews[-20:]])
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"iv_{interview_id}_r1",
                     system_message=system_prompt).with_model("anthropic", "claude-sonnet-4-5-20250929")
-    ai_response = await chat.send_message(UserMessage(text="Start the interview. Introduce yourself and begin Round 1."))
+    ai_response = await chat.send_message(UserMessage(text="Start the interview. Introduce yourself briefly, then ask the candidate to introduce themselves - their background, education, and experience. Do NOT start with technical questions yet."))
     msg = {"message_id": f"msg_{uuid.uuid4().hex[:12]}", "interview_id": interview_id,
            "round_number": 1, "role": "interviewer", "content": ai_response,
            "timestamp": datetime.now(timezone.utc).isoformat()}

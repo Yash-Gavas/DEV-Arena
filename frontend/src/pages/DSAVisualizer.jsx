@@ -1,168 +1,234 @@
-import { useState, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text } from '@react-three/drei';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Eye, ChevronRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-// === 3D Node as Sphere ===
-function Node3D({ position, label, color = '#007AFF', isActive = false }) {
-  const meshRef = useRef();
-  useFrame((state) => {
-    if (meshRef.current && isActive) {
-      meshRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.1);
+// Pure Three.js canvas - no R3F reconciler
+function ThreeCanvas({ selectedDS, activeIndex }) {
+  const containerRef = useRef(null);
+  const sceneRef = useRef(null);
+  const rendererRef = useRef(null);
+  const cameraRef = useRef(null);
+  const controlsRef = useRef(null);
+  const animFrameRef = useRef(null);
+  const groupRef = useRef(null);
+
+  const createTextSprite = useCallback((text, color = '#ffffff', fontSize = 48) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(String(text), 64, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1, 0.5, 1);
+    return sprite;
+  }, []);
+
+  const createNode = useCallback((pos, label, color = '#007AFF', isActive = false) => {
+    const group = new THREE.Group();
+    group.position.set(...pos);
+    const geo = new THREE.SphereGeometry(0.35, 24, 24);
+    const mat = new THREE.MeshStandardMaterial({
+      color, emissive: isActive ? color : '#111',
+      emissiveIntensity: isActive ? 0.5 : 0.1, metalness: 0.3, roughness: 0.4
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    if (isActive) mesh.userData.pulse = true;
+    group.add(mesh);
+    const sprite = createTextSprite(label);
+    sprite.position.set(0, 0, 0.5);
+    group.add(sprite);
+    return group;
+  }, [createTextSprite]);
+
+  const createEdge = useCallback((start, end, color = '#007AFF') => {
+    const s = new THREE.Vector3(...start);
+    const e = new THREE.Vector3(...end);
+    const mid = new THREE.Vector3().addVectors(s, e).multiplyScalar(0.5);
+    const dir = new THREE.Vector3().subVectors(e, s);
+    const len = dir.length();
+    const geo = new THREE.CylinderGeometry(0.03, 0.03, len, 8);
+    const mat = new THREE.MeshStandardMaterial({ color, opacity: 0.4, transparent: true });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(mid);
+    const q = new THREE.Quaternion();
+    q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    mesh.quaternion.copy(q);
+    return mesh;
+  }, []);
+
+  const buildScene = useCallback(() => {
+    if (!groupRef.current) return;
+    while (groupRef.current.children.length > 0) {
+      const child = groupRef.current.children[0];
+      groupRef.current.remove(child);
+      child.traverse(c => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) { if (c.material.map) c.material.map.dispose(); c.material.dispose(); }
+      });
     }
-  });
-  return (
-    <group position={position}>
-      <mesh ref={meshRef}>
-        <sphereGeometry args={[0.35, 24, 24]} />
-        <meshStandardMaterial color={color} emissive={isActive ? color : '#111'} emissiveIntensity={isActive ? 0.5 : 0.1} metalness={0.3} roughness={0.4} />
-      </mesh>
-      <Text position={[0, 0, 0.45]} fontSize={0.22} color="white" anchorX="center" anchorY="middle">
-        {label}
-      </Text>
-    </group>
-  );
-}
 
-// === Edge as thin Cylinder between two points ===
-function Edge3D({ start, end, color = '#007AFF' }) {
-  const startVec = new THREE.Vector3(...start);
-  const endVec = new THREE.Vector3(...end);
-  const mid = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
-  const direction = new THREE.Vector3().subVectors(endVec, startVec);
-  const length = direction.length();
-  const orientation = new THREE.Quaternion();
-  orientation.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
-
-  return (
-    <mesh position={[mid.x, mid.y, mid.z]} quaternion={orientation}>
-      <cylinderGeometry args={[0.03, 0.03, length, 8]} />
-      <meshStandardMaterial color={color} opacity={0.4} transparent />
-    </mesh>
-  );
-}
-
-// === Binary Tree ===
-function BinaryTreeViz({ data, activeIndex }) {
-  const nodes = [];
-  const edges = [];
-  const build = (arr, idx, x, y, spread) => {
-    if (idx >= arr.length || arr[idx] === null) return;
-    const pos = [x, y, 0];
-    nodes.push({ pos, label: String(arr[idx]), isActive: idx === activeIndex });
-    const left = 2 * idx + 1;
-    const right = 2 * idx + 2;
-    if (left < arr.length && arr[left] !== null) {
-      const cp = [x - spread, y - 1.5, 0];
-      edges.push({ start: pos, end: cp });
-      build(arr, left, x - spread, y - 1.5, spread * 0.55);
+    const ds = selectedDS;
+    if (ds.key === 'array') {
+      ds.data.forEach((val, i) => {
+        const x = i * 1.2 - (ds.data.length * 0.6);
+        const geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+        const mat = new THREE.MeshStandardMaterial({
+          color: i === activeIndex ? '#EAB308' : '#FF3B30',
+          emissive: i === activeIndex ? '#EAB308' : '#111',
+          emissiveIntensity: i === activeIndex ? 0.3 : 0, metalness: 0.2, roughness: 0.5
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x, 0, 0);
+        if (i === activeIndex) mesh.userData.pulse = true;
+        groupRef.current.add(mesh);
+        const valS = createTextSprite(String(val));
+        valS.position.set(x, 0, 0.55);
+        groupRef.current.add(valS);
+        const idxS = createTextSprite(`[${i}]`, '#666666', 32);
+        idxS.position.set(x, -0.75, 0);
+        groupRef.current.add(idxS);
+      });
+    } else if (ds.key === 'linkedlist') {
+      ds.data.forEach((val, i) => {
+        const x = i * 2 - (ds.data.length - 1);
+        groupRef.current.add(createNode([x, 0, 0], String(val), '#22C55E', i === activeIndex));
+        if (i < ds.data.length - 1) groupRef.current.add(createEdge([x + 0.4, 0, 0], [x + 1.6, 0, 0], '#22C55E'));
+      });
+    } else if (ds.key === 'binarytree') {
+      const build = (arr, idx, x, y, spread) => {
+        if (idx >= arr.length || arr[idx] === null) return;
+        groupRef.current.add(createNode([x, y, 0], String(arr[idx]), '#007AFF', idx === activeIndex));
+        if (2*idx+1 < arr.length && arr[2*idx+1] !== null) {
+          groupRef.current.add(createEdge([x, y, 0], [x-spread, y-1.5, 0], '#007AFF'));
+          build(arr, 2*idx+1, x-spread, y-1.5, spread*0.55);
+        }
+        if (2*idx+2 < arr.length && arr[2*idx+2] !== null) {
+          groupRef.current.add(createEdge([x, y, 0], [x+spread, y-1.5, 0], '#007AFF'));
+          build(arr, 2*idx+2, x+spread, y-1.5, spread*0.55);
+        }
+      };
+      build(ds.data, 0, 0, 3, 3);
+    } else if (ds.key === 'stack') {
+      ds.data.forEach((val, i) => {
+        const y = i * 1.1 - (ds.data.length * 0.55);
+        const geo = new THREE.BoxGeometry(1.5, 0.8, 0.8);
+        const mat = new THREE.MeshStandardMaterial({
+          color: i === ds.data.length-1 ? '#A855F7' : '#6B21A8',
+          emissive: i === activeIndex ? '#A855F7' : '#111',
+          emissiveIntensity: i === activeIndex ? 0.3 : 0, metalness: 0.2, roughness: 0.5
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(0, y, 0);
+        if (i === activeIndex) mesh.userData.pulse = true;
+        groupRef.current.add(mesh);
+        const s = createTextSprite(String(val));
+        s.position.set(0, y, 0.5);
+        groupRef.current.add(s);
+      });
+      const top = createTextSprite('TOP', '#A855F7');
+      top.position.set(0, (ds.data.length * 0.55) + 0.5, 0);
+      groupRef.current.add(top);
+    } else if (ds.key === 'graph') {
+      const positions = [[-2,2,0],[2,2,0],[3,0,0],[1,-2,0],[-1,-2,0],[-3,0,0]];
+      const labels = ['A','B','C','D','E','F'];
+      const edges = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,0],[0,3],[1,4]];
+      edges.forEach(([a,b]) => groupRef.current.add(createEdge(positions[a], positions[b], '#06B6D4')));
+      positions.forEach((pos, i) => groupRef.current.add(createNode(pos, labels[i], '#06B6D4', i === activeIndex)));
     }
-    if (right < arr.length && arr[right] !== null) {
-      const cp = [x + spread, y - 1.5, 0];
-      edges.push({ start: pos, end: cp });
-      build(arr, right, x + spread, y - 1.5, spread * 0.55);
-    }
-  };
-  build(data, 0, 0, 3, 3);
-  return (
-    <>
-      {edges.map((e, i) => <Edge3D key={`e${i}`} start={e.start} end={e.end} color="#007AFF" />)}
-      {nodes.map((n, i) => <Node3D key={`n${i}`} position={n.pos} label={n.label} isActive={n.isActive} />)}
-    </>
-  );
-}
+  }, [selectedDS, activeIndex, createNode, createEdge, createTextSprite]);
 
-// === Linked List ===
-function LinkedListViz({ data, activeIndex }) {
-  return (
-    <>
-      {data.map((val, i) => {
-        const x = i * 2 - (data.length - 1);
-        return (
-          <group key={i}>
-            <Node3D position={[x, 0, 0]} label={String(val)} color="#22C55E" isActive={i === activeIndex} />
-            {i < data.length - 1 && <Edge3D start={[x + 0.4, 0, 0]} end={[x + 1.6, 0, 0]} color="#22C55E" />}
-          </group>
-        );
-      })}
-    </>
-  );
-}
+  // Init Three.js scene once
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
 
-// === Array ===
-function ArrayViz({ data, activeIndex }) {
-  return (
-    <>
-      {data.map((val, i) => {
-        const x = i * 1.2 - (data.length * 0.6);
-        return (
-          <group key={i}>
-            <mesh position={[x, 0, 0]}>
-              <boxGeometry args={[0.9, 0.9, 0.9]} />
-              <meshStandardMaterial color={i === activeIndex ? '#EAB308' : '#FF3B30'} emissive={i === activeIndex ? '#EAB308' : '#111'} emissiveIntensity={i === activeIndex ? 0.3 : 0} metalness={0.2} roughness={0.5} />
-            </mesh>
-            <Text position={[x, 0, 0.55]} fontSize={0.28} color="white" anchorX="center" anchorY="middle">
-              {String(val)}
-            </Text>
-            <Text position={[x, -0.75, 0]} fontSize={0.15} color="#666" anchorX="center" anchorY="middle">
-              [{i}]
-            </Text>
-          </group>
-        );
-      })}
-    </>
-  );
-}
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#000000');
+    const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 100);
+    camera.position.set(0, 0, 10);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
 
-// === Stack ===
-function StackViz({ data, activeIndex }) {
-  return (
-    <>
-      {data.map((val, i) => {
-        const y = i * 1.1 - (data.length * 0.55);
-        return (
-          <group key={i}>
-            <mesh position={[0, y, 0]}>
-              <boxGeometry args={[1.5, 0.8, 0.8]} />
-              <meshStandardMaterial color={i === data.length - 1 ? '#A855F7' : '#6B21A8'} emissive={i === activeIndex ? '#A855F7' : '#111'} emissiveIntensity={i === activeIndex ? 0.3 : 0} metalness={0.2} roughness={0.5} />
-            </mesh>
-            <Text position={[0, y, 0.5]} fontSize={0.25} color="white" anchorX="center" anchorY="middle">
-              {String(val)}
-            </Text>
-          </group>
-        );
-      })}
-      <Text position={[0, (data.length * 0.55) + 0.5, 0]} fontSize={0.2} color="#A855F7" anchorX="center">
-        TOP
-      </Text>
-    </>
-  );
-}
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
 
-// === Graph Visualization ===
-function GraphViz({ activeIndex }) {
-  const positions = [
-    [-2, 2, 0], [2, 2, 0], [3, 0, 0], [1, -2, 0], [-1, -2, 0], [-3, 0, 0]
-  ];
-  const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
-  const graphEdges = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,0],[0,3],[1,4]];
-  return (
-    <>
-      {graphEdges.map(([a, b], i) => <Edge3D key={`ge${i}`} start={positions[a]} end={positions[b]} color="#06B6D4" />)}
-      {positions.map((pos, i) => <Node3D key={`gn${i}`} position={pos} label={labels[i]} color="#06B6D4" isActive={i === activeIndex} />)}
-    </>
-  );
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    const pt1 = new THREE.PointLight(0xffffff, 0.8);
+    pt1.position.set(10, 10, 10);
+    scene.add(pt1);
+    const pt2 = new THREE.PointLight(0x007AFF, 0.3);
+    pt2.position.set(-10, -10, 5);
+    scene.add(pt2);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    sceneRef.current = scene;
+    rendererRef.current = renderer;
+    cameraRef.current = camera;
+    controlsRef.current = controls;
+    groupRef.current = group;
+
+    const clock = new THREE.Clock();
+    const animate = () => {
+      animFrameRef.current = requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+      group.traverse(child => {
+        if (child.userData?.pulse && child.isMesh) {
+          child.scale.setScalar(1 + Math.sin(t * 3) * 0.1);
+        }
+      });
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const handleResize = () => {
+      const nw = container.clientWidth;
+      const nh = container.clientHeight;
+      camera.aspect = nw / nh;
+      camera.updateProjectionMatrix();
+      renderer.setSize(nw, nh);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animFrameRef.current);
+      controls.dispose();
+      renderer.dispose();
+      if (container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement);
+      }
+    };
+  }, []);
+
+  // Rebuild scene content when data or active index changes
+  useEffect(() => { buildScene(); }, [buildScene]);
+
+  return <div ref={containerRef} className="w-full h-full" data-testid="three-canvas" />;
 }
 
 const DS_OPTIONS = [
-  { key: 'array', label: 'Array', data: [5, 3, 8, 1, 9, 2, 7, 4], desc: 'Linear structure. O(1) access by index. O(n) insert/delete.' },
-  { key: 'linkedlist', label: 'Linked List', data: [1, 2, 3, 4, 5, 6], desc: 'Nodes with pointers. O(1) insert at head. O(n) search.' },
-  { key: 'binarytree', label: 'Binary Tree', data: [10, 5, 15, 3, 7, 12, 20, 1, 4], desc: 'BST: left < parent < right. O(log n) search/insert.' },
-  { key: 'stack', label: 'Stack (LIFO)', data: [10, 20, 30, 40, 50], desc: 'Last-In-First-Out. O(1) push/pop. DFS, recursion, undo.' },
-  { key: 'graph', label: 'Graph', data: [0, 1, 2, 3, 4, 5], desc: 'Nodes + edges. BFS/DFS traversal. Shortest path, cycles.' },
+  { key: 'array', label: 'Array', data: [5,3,8,1,9,2,7,4], desc: 'Linear structure. O(1) access by index. O(n) insert/delete.' },
+  { key: 'linkedlist', label: 'Linked List', data: [1,2,3,4,5,6], desc: 'Nodes with pointers. O(1) insert at head. O(n) search.' },
+  { key: 'binarytree', label: 'Binary Tree', data: [10,5,15,3,7,12,20,1,4], desc: 'BST: left < parent < right. O(log n) search/insert.' },
+  { key: 'stack', label: 'Stack (LIFO)', data: [10,20,30,40,50], desc: 'Last-In-First-Out. O(1) push/pop. DFS, recursion, undo.' },
+  { key: 'graph', label: 'Graph', data: [0,1,2,3,4,5], desc: 'Nodes + edges. BFS/DFS traversal. Shortest path, cycles.' },
 ];
 
 export default function DSAVisualizer() {
@@ -195,16 +261,8 @@ export default function DSAVisualizer() {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           {DS_OPTIONS.map(ds => (
-            <button
-              key={ds.key}
-              onClick={() => { setSelectedDS(ds); setActiveIndex(-1); }}
-              data-testid={`ds-${ds.key}`}
-              className={`p-3 rounded-md border text-left transition-all ${
-                selectedDS.key === ds.key
-                  ? 'bg-blue-600/10 border-blue-500/40 text-blue-400'
-                  : 'bg-[#141414] border-white/10 text-zinc-300 hover:border-white/25'
-              }`}
-            >
+            <button key={ds.key} onClick={() => { setSelectedDS(ds); setActiveIndex(-1); }} data-testid={`ds-${ds.key}`}
+              className={`p-3 rounded-md border text-left transition-all ${selectedDS.key === ds.key ? 'bg-blue-600/10 border-blue-500/40 text-blue-400' : 'bg-[#141414] border-white/10 text-zinc-300 hover:border-white/25'}`}>
               <p className="text-sm font-semibold">{ds.label}</p>
               <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2">{ds.desc}</p>
             </button>
@@ -214,17 +272,7 @@ export default function DSAVisualizer() {
         <Card className="bg-[#141414] border-white/10 mb-4">
           <CardContent className="p-0">
             <div className="h-[450px] rounded-md overflow-hidden bg-black">
-              <Canvas camera={{ position: [0, 0, 10], fov: 50 }}>
-                <ambientLight intensity={0.4} />
-                <pointLight position={[10, 10, 10]} intensity={0.8} />
-                <pointLight position={[-10, -10, 5]} intensity={0.3} color="#007AFF" />
-                {selectedDS.key === 'array' && <ArrayViz data={selectedDS.data} activeIndex={activeIndex} />}
-                {selectedDS.key === 'linkedlist' && <LinkedListViz data={selectedDS.data} activeIndex={activeIndex} />}
-                {selectedDS.key === 'binarytree' && <BinaryTreeViz data={selectedDS.data} activeIndex={activeIndex} />}
-                {selectedDS.key === 'stack' && <StackViz data={selectedDS.data} activeIndex={activeIndex} />}
-                {selectedDS.key === 'graph' && <GraphViz activeIndex={activeIndex} />}
-                <OrbitControls enableDamping dampingFactor={0.05} />
-              </Canvas>
+              <ThreeCanvas selectedDS={selectedDS} activeIndex={activeIndex} />
             </div>
             <div className="p-4 flex items-center justify-between border-t border-white/10">
               <div>
