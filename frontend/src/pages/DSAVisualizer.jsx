@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Eye, ChevronRight } from 'lucide-react';
+import { Eye, ChevronRight, Send, Loader2, Bug, Lightbulb, Clock, Zap, ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { Textarea } from '../components/ui/textarea';
+import axios from 'axios';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // Pure Three.js canvas - no R3F reconciler
 function ThreeCanvas({ selectedDS, activeIndex }) {
@@ -236,6 +240,12 @@ export default function DSAVisualizer() {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [animating, setAnimating] = useState(false);
 
+  // Custom question visualizer
+  const [questionInput, setQuestionInput] = useState('');
+  const [customViz, setCustomViz] = useState(null);
+  const [loadingCustom, setLoadingCustom] = useState(false);
+  const [customStep, setCustomStep] = useState(0);
+
   const animate = () => {
     setAnimating(true);
     let i = 0;
@@ -249,6 +259,43 @@ export default function DSAVisualizer() {
     }, 600);
   };
 
+  const visualizeQuestion = async () => {
+    if (!questionInput.trim() || loadingCustom) return;
+    setLoadingCustom(true);
+    setCustomViz(null);
+    setCustomStep(0);
+    try {
+      const res = await axios.post(`${API}/visualize/question`, { message: questionInput }, { withCredentials: true });
+      setCustomViz(res.data);
+      // Also update the 3D view with the data
+      if (res.data.data?.length > 0) {
+        const dsKey = res.data.data_structure || 'array';
+        const matched = DS_OPTIONS.find(d => d.key === dsKey) || DS_OPTIONS[0];
+        setSelectedDS({ ...matched, data: res.data.data, label: res.data.title || matched.label, desc: res.data.explanation?.slice(0, 100) || matched.desc });
+      }
+    } catch { }
+    setLoadingCustom(false);
+  };
+
+  const animateCustom = () => {
+    if (!customViz?.steps?.length) return;
+    setAnimating(true);
+    let i = 0;
+    setCustomStep(0);
+    const interval = setInterval(() => {
+      setCustomStep(i);
+      const step = customViz.steps[i];
+      if (step?.active_indices?.length > 0) {
+        setActiveIndex(step.active_indices[0]);
+      }
+      i++;
+      if (i >= customViz.steps.length) {
+        clearInterval(interval);
+        setTimeout(() => { setAnimating(false); }, 1000);
+      }
+    }, 1500);
+  };
+
   return (
     <div className="min-h-screen bg-[#0A0A0A] pt-20 pb-10 px-4 sm:px-6 lg:px-8" data-testid="dsa-visualizer">
       <div className="max-w-6xl mx-auto">
@@ -259,9 +306,35 @@ export default function DSAVisualizer() {
           <p className="text-zinc-400 text-sm mt-1">Interactive 3D visualization - drag to rotate, scroll to zoom</p>
         </div>
 
+        {/* Custom Question Input */}
+        <Card className="bg-[#141414] border-white/10 mb-6">
+          <CardContent className="p-4">
+            <p className="text-xs text-zinc-400 mb-2 font-semibold uppercase tracking-wider">Paste a DSA question to visualize</p>
+            <div className="flex gap-2">
+              <Textarea
+                data-testid="custom-question-input"
+                value={questionInput}
+                onChange={e => setQuestionInput(e.target.value)}
+                placeholder="e.g. Given an array [2,7,11,15] and target 9, find two numbers that add up to target. OR just paste any LeetCode question here..."
+                className="bg-black border-white/10 text-white text-xs min-h-[50px] max-h-[100px] resize-none flex-1"
+                rows={2}
+              />
+              <Button
+                data-testid="visualize-question-btn"
+                onClick={visualizeQuestion}
+                disabled={!questionInput.trim() || loadingCustom}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 self-end"
+              >
+                {loadingCustom ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Eye className="w-4 h-4 mr-1" /> Visualize</>}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Data Structure Options */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           {DS_OPTIONS.map(ds => (
-            <button key={ds.key} onClick={() => { setSelectedDS(ds); setActiveIndex(-1); }} data-testid={`ds-${ds.key}`}
+            <button key={ds.key} onClick={() => { setSelectedDS(ds); setActiveIndex(-1); setCustomViz(null); }} data-testid={`ds-${ds.key}`}
               className={`p-3 rounded-md border text-left transition-all ${selectedDS.key === ds.key ? 'bg-blue-600/10 border-blue-500/40 text-blue-400' : 'bg-[#141414] border-white/10 text-zinc-300 hover:border-white/25'}`}>
               <p className="text-sm font-semibold">{ds.label}</p>
               <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2">{ds.desc}</p>
@@ -269,6 +342,7 @@ export default function DSAVisualizer() {
           ))}
         </div>
 
+        {/* 3D Canvas */}
         <Card className="bg-[#141414] border-white/10 mb-4">
           <CardContent className="p-0">
             <div className="h-[450px] rounded-md overflow-hidden bg-black">
@@ -279,13 +353,94 @@ export default function DSAVisualizer() {
                 <p className="text-sm font-semibold">{selectedDS.label}</p>
                 <p className="text-xs text-zinc-400 mt-0.5">{selectedDS.desc}</p>
               </div>
-              <Button data-testid="animate-ds-btn" onClick={animate} disabled={animating}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-xs">
-                {animating ? 'Traversing...' : 'Traverse'} <ChevronRight className="w-3 h-3 ml-1" />
-              </Button>
+              <div className="flex gap-2">
+                {customViz?.steps?.length > 0 && (
+                  <Button data-testid="animate-custom-btn" onClick={animateCustom} disabled={animating}
+                    className="bg-amber-600 hover:bg-amber-500 text-white text-xs">
+                    {animating ? 'Running...' : 'Run Algorithm'} <Bug className="w-3 h-3 ml-1" />
+                  </Button>
+                )}
+                <Button data-testid="animate-ds-btn" onClick={animate} disabled={animating}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs">
+                  {animating ? 'Traversing...' : 'Traverse'} <ChevronRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Custom Visualization Steps */}
+        {customViz && (
+          <Card className="bg-[#141414] border-white/10 mb-4" data-testid="custom-viz-result">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold">{customViz.title}</h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">{customViz.explanation}</p>
+                </div>
+                {customViz.complexity && (
+                  <div className="flex gap-2">
+                    <span className="text-[10px] text-zinc-400 bg-[#0A0A0A] px-2 py-1 rounded border border-white/5 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-blue-400" /> {customViz.complexity.time}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 bg-[#0A0A0A] px-2 py-1 rounded border border-white/5 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-amber-400" /> {customViz.complexity.space}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Step-by-step */}
+              {customViz.steps?.length > 0 && (
+                <div>
+                  {/* Progress bar */}
+                  <div className="w-full bg-[#0A0A0A] rounded-full h-1.5 mb-3 border border-white/5">
+                    <div className="bg-blue-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${((customStep + 1) / customViz.steps.length) * 100}%` }} />
+                  </div>
+
+                  {/* Current Step */}
+                  <div className="bg-[#0A0A0A] rounded-md p-3 border border-blue-500/20 mb-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-600/20 px-1.5 py-0.5 rounded">
+                        Step {customViz.steps[customStep]?.step}
+                      </span>
+                      <span className="text-xs font-semibold text-white">{customViz.steps[customStep]?.title}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mb-2">{customViz.steps[customStep]?.description}</p>
+                    {customViz.steps[customStep]?.state && (
+                      <pre className="text-[11px] font-mono text-emerald-400 bg-black/50 p-2 rounded overflow-x-auto">{customViz.steps[customStep].state}</pre>
+                    )}
+                    {customViz.steps[customStep]?.highlight && (
+                      <p className="text-[10px] text-amber-400 mt-1.5 flex items-start gap-1">
+                        <Lightbulb className="w-3 h-3 mt-0.5 flex-shrink-0" />{customViz.steps[customStep].highlight}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Navigation */}
+                  <div className="flex items-center justify-between">
+                    <Button variant="outline" onClick={() => setCustomStep(s => Math.max(0, s - 1))} disabled={customStep === 0}
+                      className="border-white/10 text-zinc-400 h-7 text-xs px-3">
+                      <ArrowLeft className="w-3 h-3 mr-1" /> Prev
+                    </Button>
+                    <div className="flex gap-1">
+                      {customViz.steps.map((_, i) => (
+                        <button key={i} onClick={() => setCustomStep(i)}
+                          className={`w-2 h-2 rounded-full transition-all ${i === customStep ? 'bg-blue-500 scale-125' : i < customStep ? 'bg-blue-500/40' : 'bg-white/10'}`} />
+                      ))}
+                    </div>
+                    <Button variant="outline" onClick={() => setCustomStep(s => Math.min(customViz.steps.length - 1, s + 1))}
+                      disabled={customStep === customViz.steps.length - 1}
+                      className="border-white/10 text-zinc-400 h-7 text-xs px-3">
+                      Next <ChevronRight className="w-3 h-3 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

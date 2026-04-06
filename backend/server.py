@@ -706,6 +706,39 @@ async def get_sql_schema():
         {"name": "logs", "columns": ["id INT PK", "num INT"]},
     ]}
 
+# ==================== CUSTOM QUESTION VISUALIZER ====================
+@api_router.post("/visualize/question")
+async def visualize_custom_question(data: ChatRequest, request: Request):
+    await get_current_user(request)
+    system = """You are a DSA algorithm visualizer. Given a coding problem, generate a 3D-compatible visualization showing how the algorithm works step by step.
+
+Return ONLY valid JSON. NO triple backticks inside strings. Use plain text only.
+
+Return this structure:
+{"data_structure": "array|linkedlist|binarytree|stack|graph", "title": "Algorithm Name", "data": [values as numbers], "steps": [{"step": 1, "title": "step title", "description": "what happens", "active_indices": [0,1], "state": "visual state text showing pointers and values", "highlight": "key observation"}], "explanation": "overall algorithm explanation", "complexity": {"time": "O(?)", "space": "O(?)"}}
+
+Rules:
+- Choose the most relevant data_structure for the problem
+- data must be an array of numbers (for graph use node indices [0,1,2,...])
+- active_indices shows which elements are currently being processed
+- state should use ASCII art like: [2, 7, 11, 15] with i=0, j=3 pointing at elements
+- Keep steps to 5-8 max
+- Use a simple example input to demonstrate"""
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"cviz_{uuid.uuid4().hex[:8]}",
+                    system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = await chat.send_message(UserMessage(text=f"Visualize this problem:\n{data.message}"))
+    try:
+        rt = response.strip()
+        if "```json" in rt: rt = rt.split("```json")[1].split("```")[0].strip()
+        elif "```" in rt: rt = rt.split("```")[1].split("```")[0].strip()
+        rt = re.sub(r'```\w*\n', '', rt)
+        rt = rt.replace('```', '')
+        result = json.loads(rt)
+    except Exception as e:
+        logger.error(f"Custom viz parse error: {e}")
+        result = {"data_structure": "array", "title": "Visualization", "data": [1,2,3,4,5], "steps": [{"step": 1, "title": "Parse error", "description": response[:500], "active_indices": [], "state": "", "highlight": ""}], "explanation": response[:300], "complexity": {"time": "?", "space": "?"}}
+    return result
+
 # ==================== SEED ====================
 async def seed_database():
     count = await db.dsa_problems.count_documents({})
