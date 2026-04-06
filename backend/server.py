@@ -590,7 +590,112 @@ async def execute_sql(data: SQLSubmission, request: Request):
 @api_router.get("/sql/problems")
 async def list_sql_problems(request: Request):
     await get_current_user(request)
-    return {"problems": await db.sql_problems.find({}, {"_id": 0}).to_list(100)}
+    category = request.query_params.get("category")
+    difficulty = request.query_params.get("difficulty")
+    page = int(request.query_params.get("page", 1))
+    limit = int(request.query_params.get("limit", 50))
+    query = {}
+    if category and category != "all": query["category"] = category
+    if difficulty and difficulty != "all": query["difficulty"] = difficulty
+    total = await db.sql_problems.count_documents(query)
+    problems = await db.sql_problems.find(query, {"_id": 0}).skip((page - 1) * limit).limit(limit).to_list(limit)
+    return {"problems": problems, "total": total, "page": page, "total_pages": (total + limit - 1) // limit}
+
+# ==================== SQL CHATBOT ====================
+@api_router.post("/sql/chat")
+async def sql_chat(data: ChatRequest, request: Request):
+    user = await get_current_user(request)
+    system = """You are DEV-Arena's SQL Mentor. Help users write and debug SQL queries.
+
+Rules:
+- Explain SQL concepts clearly with examples
+- If user shares a query, analyze it for correctness and optimization
+- Give hints first, full solutions only if asked
+- Use markdown with SQL code blocks
+- Reference the available tables: employees, departments, orders, logs
+- Explain query execution order when relevant
+- Point out common mistakes (GROUP BY missing, wrong JOIN type, etc.)"""
+    if data.context:
+        system += f"\n\nConversation:\n{data.context}"
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"sqlchat_{user['user_id']}_{uuid.uuid4().hex[:6]}",
+                    system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = await chat.send_message(UserMessage(text=data.message))
+    return {"response": response}
+
+# ==================== DSA ENHANCED DESCRIPTION ====================
+@api_router.get("/problems/{problem_id}/description")
+async def get_enhanced_description(problem_id: str, request: Request):
+    await get_current_user(request)
+    problem = await db.dsa_problems.find_one({"problem_id": problem_id}, {"_id": 0})
+    if not problem: raise HTTPException(status_code=404, detail="Problem not found")
+    cached = await db.enhanced_descriptions.find_one({"problem_id": problem_id}, {"_id": 0})
+    if cached: return cached
+    system = f"""Generate a detailed LeetCode-style problem description. Return ONLY valid JSON (no markdown wrapping).
+
+Problem: {problem['title']}
+Topic: {problem.get('topic','')}
+Pattern: {problem.get('pattern','')}
+Difficulty: {problem['difficulty']}
+Short Description: {problem['description']}
+
+CRITICAL: The JSON must be valid. Do NOT include markdown code blocks (```) inside JSON string values. Use plain text only in all string fields. Use single backticks for inline code like `nums`.
+
+Return this exact JSON structure:
+{{"problem_id": "{problem_id}", "description": "Full problem statement. Use plain text. For code formatting use single backticks only.", "examples": [{{"input": "nums = [2,7,11,15], target = 9", "output": "[0,1]", "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]"}}], "constraints": ["1 <= nums.length <= 10^4", "-10^9 <= nums[i] <= 10^9"], "hints": ["Think about using a hash map", "Can you do it in one pass?"], "approach": "Use a hash map to store seen values and their indices", "time_complexity": "O(n)", "space_complexity": "O(n)"}}
+
+Include 2-3 examples. NO triple backticks anywhere in the output."""
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"desc_{uuid.uuid4().hex[:8]}",
+                    system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = await chat.send_message(UserMessage(text="Generate now."))
+    try:
+        rt = response.strip()
+        if "```json" in rt: rt = rt.split("```json")[1].split("```")[0].strip()
+        elif "```" in rt: rt = rt.split("```")[1].split("```")[0].strip()
+        # Clean any remaining triple backticks inside JSON strings
+        import re
+        rt = re.sub(r'```\w*\n', '', rt)
+        rt = rt.replace('```', '')
+        result = json.loads(rt)
+        result["problem_id"] = problem_id
+    except Exception as e:
+        logger.error(f"Enhanced desc parse error: {e}. Raw first 300: {response[:300]}")
+        # Try to extract what we can from the raw text
+        result = {"problem_id": problem_id, "description": problem["description"], "examples": [], "constraints": [], "hints": [], "approach": "", "time_complexity": "", "space_complexity": ""}
+    await db.enhanced_descriptions.update_one({"problem_id": problem_id}, {"$set": result}, upsert=True)
+    return result
+
+# ==================== DSA PATTERN VISUALIZER ====================
+@api_router.get("/problems/{problem_id}/visualizer")
+async def get_pattern_visualizer(problem_id: str, request: Request):
+    await get_current_user(request)
+    problem = await db.dsa_problems.find_one({"problem_id": problem_id}, {"_id": 0})
+    if not problem: raise HTTPException(status_code=404, detail="Problem not found")
+    cached = await db.pattern_visualizations.find_one({"problem_id": problem_id}, {"_id": 0})
+    if cached: return cached
+    system = f"""Generate a step-by-step visual trace of the algorithm for this problem. Return ONLY valid JSON.
+
+Problem: {problem['title']}
+Topic: {problem.get('topic','')}
+Pattern: {problem.get('pattern','')}
+Description: {problem['description']}
+
+Return this exact JSON:
+{{"problem_id": "{problem_id}", "pattern_name": "{problem.get('pattern','')}", "pattern_explanation": "<1-2 sentence explanation of the pattern>", "steps": [{{"step": 1, "title": "<short step title>", "description": "<what happens in this step>", "state": "<visual representation of data state, e.g. array with pointers>", "highlight": "<what changed>"}}], "key_insight": "<the core insight of this algorithm>", "when_to_use": ["<scenario1>", "<scenario2>"], "similar_problems": ["<problem1>", "<problem2>"]}}
+
+Use a SIMPLE example input. Show 5-8 steps max. Make each step clear enough that a beginner can follow. Use arrows and pointers in the state field like: [2, 7, 11, 15] i=0, j=3 -> or left=0, right=7"""
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"viz_{uuid.uuid4().hex[:8]}",
+                    system_message=system).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = await chat.send_message(UserMessage(text="Generate now."))
+    try:
+        rt = response.strip()
+        if "```json" in rt: rt = rt.split("```json")[1].split("```")[0].strip()
+        elif "```" in rt: rt = rt.split("```")[1].split("```")[0].strip()
+        result = json.loads(rt)
+        result["problem_id"] = problem_id
+    except Exception:
+        result = {"problem_id": problem_id, "pattern_name": problem.get("pattern",""), "steps": [], "key_insight": "", "when_to_use": [], "similar_problems": []}
+    await db.pattern_visualizations.update_one({"problem_id": problem_id}, {"$set": result}, upsert=True)
+    return result
 
 @api_router.get("/sql/schema")
 async def get_sql_schema():
@@ -604,33 +709,36 @@ async def get_sql_schema():
 # ==================== SEED ====================
 async def seed_database():
     count = await db.dsa_problems.count_documents({})
-    if count < 10000:  # Re-seed if less than expected
-        await db.dsa_problems.delete_many({})
+    sql_count = await db.sql_problems.count_documents({})
+    if count < 10000 or sql_count < 500:
         from seed_data import DSA_PROBLEMS, RESOURCES, SQL_PROBLEMS
-        if DSA_PROBLEMS:
-            # Insert in batches for large datasets
-            batch_size = 1000
-            for i in range(0, len(DSA_PROBLEMS), batch_size):
-                await db.dsa_problems.insert_many(DSA_PROBLEMS[i:i+batch_size])
-            logger.info(f"Seeded {len(DSA_PROBLEMS)} problems")
-        await db.resources.delete_many({})
-        if RESOURCES:
-            await db.resources.insert_many(RESOURCES)
-            logger.info(f"Seeded {len(RESOURCES)} resources")
-        await db.sql_problems.delete_many({})
-        if SQL_PROBLEMS:
-            await db.sql_problems.insert_many(SQL_PROBLEMS)
-            logger.info(f"Seeded {len(SQL_PROBLEMS)} SQL problems")
+        if count < 10000:
+            await db.dsa_problems.delete_many({})
+            if DSA_PROBLEMS:
+                batch_size = 1000
+                for i in range(0, len(DSA_PROBLEMS), batch_size):
+                    await db.dsa_problems.insert_many(DSA_PROBLEMS[i:i+batch_size])
+                logger.info(f"Seeded {len(DSA_PROBLEMS)} problems")
+            await db.resources.delete_many({})
+            if RESOURCES:
+                await db.resources.insert_many(RESOURCES)
+                logger.info(f"Seeded {len(RESOURCES)} resources")
+        if sql_count < 500:
+            await db.sql_problems.delete_many({})
+            if SQL_PROBLEMS:
+                await db.sql_problems.insert_many(SQL_PROBLEMS)
+                logger.info(f"Seeded {len(SQL_PROBLEMS)} SQL problems")
         await db.dsa_problems.create_index("problem_id", unique=True)
         await db.dsa_problems.create_index("topic")
         await db.dsa_problems.create_index("pattern")
         await db.dsa_problems.create_index("difficulty")
+        await db.sql_problems.create_index("sql_id", unique=True)
         await db.interviews.create_index("interview_id", unique=True)
         await db.interviews.create_index("user_id")
         await db.users.create_index("user_id", unique=True)
         await db.users.create_index("email", unique=True)
     else:
-        logger.info(f"DB has {count} problems, skipping seed")
+        logger.info(f"DB has {count} problems, {sql_count} SQL, skipping seed")
 
 @app.on_event("startup")
 async def startup():
