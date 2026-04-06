@@ -1,7 +1,7 @@
 # DEV-Arena - Product Requirements Document
 
 ## Problem Statement
-AI-powered technical interview platform with: real AI interviewer persona (Alex Chen), 15000+ DSA problems, LeetCode-style unified problem workspace with IDE + AI chatbot + test cases + pattern visualizer + step-by-step debugger, 580+ SQL playground with chatbot, 3D data structure visualizer, voice interview with auto-listen, proctored sessions with camera, user profiles, CS resources hub.
+AI-powered technical interview platform with: real AI interviewer, 15000+ DSA problems, LeetCode-style workspace with IDE + chatbot + test cases + pattern visualizer + debugger, 580+ SQL lab with chatbot, 3D visualizer with custom question input, voice interview with auto-listen, camera proctoring.
 
 ## Architecture
 - Frontend: React 19 + Tailwind + Shadcn UI + Three.js (pure) + Monaco Editor
@@ -9,71 +9,59 @@ AI-powered technical interview platform with: real AI interviewer persona (Alex 
 - AI: Claude Sonnet 4.5 via emergentintegrations
 - Auth: Emergent Google OAuth + JWT sessions
 
-## Core Features (Implemented)
-
-### LeetCode-Style Problem Workspace (/problems/:id)
-- [x] Enhanced LeetCode-style descriptions (examples, constraints, hints, approach, complexity)
-- [x] AI-generated test cases per problem (cached in MongoDB)
-- [x] Pattern Visualizer tab: pattern explanation, key insight, when to use, similar problems, algorithm steps with visual state
-- [x] Step-by-Step Debugger tab: progress bar, prev/next navigation, step timeline, state visualization
-- [x] 22 language Monaco editor
-- [x] Problem-context-aware AI chatbot
-- [x] LLM-powered code evaluation
-
-### SQL Lab
-- [x] 580 SQL problems across 14 categories
-- [x] Category + difficulty filters with pagination
-- [x] SQL Mentor AI chatbot
-- [x] Live SQLite execution with results table
-- [x] Schema reference sidebar
+## Core Features (All Implemented)
 
 ### AI Interview (4 Rounds)
-- [x] R1: Introduction first, then DSA with split IDE
-- [x] R2: Projects & Core Subjects
-- [x] R3: Managerial & System Design
-- [x] R4: HR Round
-- [x] Brutally honest feedback (no sugarcoating wrong answers)
-- [x] Voice auto-listen + AI speaking visualization
-- [x] Camera proctoring + tab switch detection
+- R1: Intro first, then DSA with split IDE
+- R2: Projects & Core CS
+- R3: Managerial & System Design
+- R4: HR Round
+- Brutally honest feedback
+- Voice: auto-listen after AI speaks, live transcript banner, auto-send after 3s silence
+- Camera: live video preview with proper ref timing
+- Tab switch proctoring
+
+### LeetCode-Style Problem Workspace (/problems/:id)
+- Enhanced descriptions (examples, constraints, hints, approach, complexity)
+- AI-generated test cases (cached)
+- Pattern Visualizer tab (pattern name, insight, when-to-use, algorithm steps)
+- Step-by-Step Debugger tab (progress bar, prev/next, step timeline)
+- 22 language Monaco editor
+- Problem-context AI chatbot
+- LLM code evaluation
+
+### SQL Lab
+- 580 SQL problems, 14 categories
+- Category + difficulty filters with pagination
+- SQL Mentor AI chatbot
+- Live SQLite execution
 
 ### 3D Data Structure Visualizer
-- [x] Pure Three.js (Array, LinkedList, BinaryTree, Stack, Graph)
-- [x] Traverse animation, OrbitControls
+- Pure Three.js: Array, LinkedList, BinaryTree, Stack, Graph
+- Custom question input: paste any question, AI generates visualization with steps
+- Traverse animation, OrbitControls
 
 ### Other
-- [x] 15,068 DSA problems with filters
-- [x] Google OAuth + JWT auth
-- [x] CS Resources hub
-- [x] User profiles
-- [x] DEV-Arena branding
+- 15,068 DSA problems with filters
+- Google OAuth + JWT auth
+- CS Resources hub
+- User profiles
+- DEV-Arena branding
 
 ## Prioritized Backlog
 ### P0
-- Badges & Ranking system (XP, streaks, levels)
+- Badges & Ranking system
 - 3D moving background components
 
 ### P1
 - Enhanced face detection (MediaPipe)
 - Downloadable code with README
-- Problem bookmarking + solving history
-- Company-specific interview tracks
+- Problem bookmarking + history
 
 ### P2
 - RAG for textbooks
 - Collaborative mock interviews
-- Mobile responsive improvements
-
-## Key API Endpoints
-- GET /api/problems/{id}/description — Enhanced LeetCode-style description
-- GET /api/problems/{id}/visualizer — Pattern steps visualization
-- GET /api/problems/{id}/testcases — AI-generated test cases
-- POST /api/problems/{id}/chat — Problem chatbot
-- POST /api/code/evaluate — LLM code evaluation
-- GET /api/sql/problems — 580 SQL problems with filters
-- POST /api/sql/chat — SQL Mentor chatbot
-- POST /api/sql/execute — Execute SQL
-- POST /api/interviews/start — Start interview
-- POST /api/interviews/{id}/message — Send message
+- Mobile responsive
 
 ## DB Collections
 users, user_sessions, dsa_problems, sql_problems, testcases, submissions, enhanced_descriptions, pattern_visualizations, interviews, interview_messages, reports, proctoring_events, resources
