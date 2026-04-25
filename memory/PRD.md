@@ -1,7 +1,7 @@
 # DEV-Arena - AI Interview Preparation Platform
 
 ## Product Overview
-AI-powered interview preparation platform with 4-round mock interviews, 15,000+ DSA problems, 580 SQL questions, LeetCode-style IDE, 3D data structure visualization, badges/ranking, and community features.
+AI-powered interview preparation platform with 4-round mock interviews, 15,000+ DSA problems, 580 SQL questions, LeetCode-style IDE, 3D data structure visualization, badges/ranking, community, and curated CS resources.
 
 ## Tech Stack
 - **Frontend**: React 19, Tailwind CSS, Shadcn UI, Zustand, pure Three.js
@@ -9,75 +9,58 @@ AI-powered interview preparation platform with 4-round mock interviews, 15,000+ 
 - **AI**: Claude Sonnet 4.5 via Emergent LLM Key
 - **Auth**: Emergent-managed Google OAuth
 
-## Core Features
+## Core Features (All Working)
 
-### Implemented (All Working)
-1. **AI Interview (4 Rounds)** - Proctored with camera, voice auto-listen, and split IDE
-   - Round 1: Intro + DSA coding questions with IDE
-   - Round 2: Projects, Core Subjects + SQL queries with IDE
+1. **AI Interview (4 Rounds)** - Proctored with camera, voice auto-listen, split IDE
+   - Round 1: Intro + DSA coding (IDE visible)
+   - Round 2: Projects, Core Subjects + SQL queries (IDE visible)
    - Round 3: Managerial + System Design
    - Round 4: HR Round
-   - **BRUTALLY HONEST** feedback - interviewer gives direct, critical assessment at each round transition and in final report
-2. **ProblemWorkspace** - LeetCode-style unified IDE with problem description, multi-language editor (20+ languages), AI chatbot, pattern visualizer, step-by-step debugger
-3. **SQL Playground** - 580 SQL problems with live query execution against sample DB, SQL chatbot
-4. **3D Data Structure Visualizer** - Pure Three.js (NO React-Three-Fiber!)
+   - BRUTALLY HONEST feedback at each round transition
+   - Round-wise structured report (grouped by actual round_number)
+
+2. **ProblemWorkspace** - LeetCode-style unified IDE
+   - Multi-language editor (22 languages), AI chatbot, pattern visualizer, debugger
+   - **Time Complexity Comparison Graph** - visual bar chart comparing O(1) to O(n!)
+
+3. **SQL Playground** - 580 SQL problems, live query execution, SQL chatbot
+
+4. **3D Data Structure Visualizer** - Pure Three.js
    - Custom user input for Array, Linked List, Binary Tree, Stack, Graph
-   - Direction arrows with cone arrowheads
-   - HEAD/NULL/ROOT/L/R/next labels, PUSH/POP indicators
-   - AI-powered question visualization
+   - Direction arrows with cone arrowheads, HEAD/NULL/ROOT/L/R labels
+
 5. **Community Page** - Post experiences & reviews, like, comment, delete own posts
-6. **Badges & Ranking System** - XP, streaks, 10 badges, 6 rank tiers (Novice→Grandmaster)
-7. **Dashboard** - XP/rank display, earned badges preview, recent interviews
-8. **Profile** - Full badges grid, XP progress bar, rank card, edit bio/college/target role
 
-### DB Seeded
-- 15,000+ DSA problems (topics, patterns, companies)
-- 580 SQL problems (categories, difficulties)
+6. **Badges & Ranking** - 10 badges, 6 rank tiers (Novice->Grandmaster), XP, streaks
 
-## Architecture
-```
-/app/
-├── backend/
-│   ├── server.py          # FastAPI - all endpoints
-│   ├── seed_data.py       # 15k DSA + 580 SQL seed
-│   ├── tests/             # pytest test files
-│   └── .env
-├── frontend/
-│   ├── src/pages/
-│   │   ├── AIInterview.jsx
-│   │   ├── ProblemWorkspace.jsx
-│   │   ├── SQLPlayground.jsx
-│   │   ├── DSAVisualizer.jsx    # Pure Three.js
-│   │   ├── Community.jsx
-│   │   ├── Dashboard.jsx
-│   │   ├── Profile.jsx
-│   │   ├── DSAProblems.jsx
-│   │   ├── InterviewReport.jsx
-│   │   ├── Resources.jsx
-│   │   └── LandingPage.jsx
-│   └── package.json
-└── memory/
-    ├── PRD.md
-    └── test_credentials.md
-```
+7. **Dashboard** - XP/rank/streak display, earned badges, 3D grid background
+
+8. **3D Moving Backgrounds** - Pure Three.js animated backgrounds
+   - Landing page: Particle network with connecting lines
+   - Dashboard: Floating grid
+   - Features section: Node network
+
+9. **Resources** - Curated best resources per subject (6 subjects)
+   - OS, DBMS, CN, System Design, OOP, SQL Practice
+   - Books, videos, articles, interactive tools, practice platforms
 
 ## API Endpoints
-- Auth: POST /api/auth/session, GET /api/auth/me, POST /api/auth/logout
-- Problems: GET /api/problems, GET /api/problems/{id}, GET /api/problems/{id}/description, GET /api/problems/{id}/testcases, POST /api/problems/{id}/chat
-- Interview: POST /api/interviews/start, POST /api/interviews/{id}/message, POST /api/interviews/{id}/next-round, POST /api/interviews/{id}/end
-- Reports: GET /api/reports, GET /api/reports/{id}
-- Profile: GET /api/profile, PUT /api/profile, GET /api/profile/stats
-- SQL: POST /api/sql/execute, GET /api/sql/problems, POST /api/sql/chat, GET /api/sql/schema
-- Community: GET /api/community/posts, POST /api/community/posts, DELETE /api/community/posts/{id}, POST /api/community/posts/{id}/like, POST /api/community/posts/{id}/comment, GET /api/community/stats
-- Code: POST /api/code/evaluate
-- Visualize: POST /api/visualize/question
+- Auth: /api/auth/session, /api/auth/me, /api/auth/logout
+- Problems: /api/problems, /api/problems/{id}, /api/problems/{id}/description, /api/problems/{id}/testcases, /api/problems/{id}/chat
+- Interview: /api/interviews/start, /api/interviews/{id}/message, /api/interviews/{id}/next-round, /api/interviews/{id}/end
+- Reports: /api/reports, /api/reports/{id}
+- Profile: /api/profile, PUT /api/profile, /api/profile/stats (badges/ranking)
+- SQL: /api/sql/execute, /api/sql/problems, /api/sql/chat, /api/sql/schema
+- Community: CRUD /api/community/posts, like, comment, stats
+- Code: /api/code/evaluate
+- Visualize: /api/visualize/question
+- Resources: /api/resources (with curated best_resources)
 
 ## Remaining Backlog
-- **P1: 3D Moving Background Components** - Add subtle 3D animated backgrounds to Dashboard/Landing pages using pure Three.js
-- **P2: Downloadable Code & README** - Create comprehensive README for local Docker/MongoDB setup
-- **P3: RAG for Textbooks** - RAG pipeline for core subject interview questions using PDFs
+- **P1: Downloadable Code & README** - Docker/local setup guide
+- **P2: RAG for Textbooks** - RAG pipeline for core subjects using PDFs
 
 ## Critical Notes
 - DO NOT USE React-Three-Fiber (crashes with React 19)
-- server.py is ~1040 lines - consider modularizing in future
-- All 3D must use pure three.js
+- server.py is ~1136 lines - modularization recommended
+- Problem IDs use format prob_NNNNN
