@@ -423,16 +423,16 @@ BADGE_DEFS = [
 ]
 
 def get_rank(xp):
-    rank_name, rank_color = "Novice", "#6B7280"
+    rank_name, rank_color, current_threshold = "Novice", "#6B7280", 0
     for threshold, name, color in RANK_THRESHOLDS:
         if xp >= threshold:
-            rank_name, rank_color = name, color
+            rank_name, rank_color, current_threshold = name, color, threshold
     next_rank = None
     for threshold, name, _ in RANK_THRESHOLDS:
         if xp < threshold:
             next_rank = {"name": name, "xp_needed": threshold}
             break
-    return {"name": rank_name, "color": rank_color, "next": next_rank}
+    return {"name": rank_name, "color": rank_color, "current_threshold": current_threshold, "next": next_rank}
 
 @api_router.get("/profile/stats")
 async def get_profile_stats(request: Request):
@@ -459,12 +459,15 @@ async def get_profile_stats(request: Request):
     reports = await db.reports.find({"user_id": uid}, {"_id": 0, "overall_score": 1}).to_list(100)
     max_score = max((r.get("overall_score", 0) for r in reports), default=0)
 
-    # Activity streak (check consecutive days with any activity)
+    # Activity streak - get user's interview IDs first, then fetch candidate messages
     all_timestamps = []
     subs = await db.submissions.find({"user_id": uid}, {"_id": 0, "timestamp": 1}).to_list(5000)
     all_timestamps.extend([s["timestamp"] for s in subs if s.get("timestamp")])
-    msgs = await db.interview_messages.find({"interview_id": {"$regex": "^int_"}, "role": "candidate"}, {"_id": 0, "timestamp": 1}).to_list(5000)
-    all_timestamps.extend([m["timestamp"] for m in msgs if m.get("timestamp")])
+    user_interviews = await db.interviews.find({"user_id": uid}, {"_id": 0, "interview_id": 1}).to_list(500)
+    user_int_ids = [i["interview_id"] for i in user_interviews]
+    if user_int_ids:
+        msgs = await db.interview_messages.find({"interview_id": {"$in": user_int_ids}, "role": "candidate"}, {"_id": 0, "timestamp": 1}).to_list(5000)
+        all_timestamps.extend([m["timestamp"] for m in msgs if m.get("timestamp")])
     posts = await db.community_posts.find({"user_id": uid}, {"_id": 0, "created_at": 1}).to_list(1000)
     all_timestamps.extend([p["created_at"] for p in posts if p.get("created_at")])
 

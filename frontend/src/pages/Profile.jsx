@@ -77,9 +77,10 @@ export default function Profile() {
   };
 
   const xp = profileStats?.xp || 0;
-  const rank = profileStats?.rank || { name: 'Novice', color: '#6B7280' };
+  const rank = profileStats?.rank || { name: 'Novice', color: '#6B7280', current_threshold: 0 };
   const nextRank = rank.next;
-  const xpProgress = nextRank ? ((xp - (xp < 100 ? 0 : xp < 500 ? 100 : xp < 1500 ? 500 : xp < 5000 ? 1500 : 5000)) / (nextRank.xp_needed - (xp < 100 ? 0 : xp < 500 ? 100 : xp < 1500 ? 500 : xp < 5000 ? 1500 : 5000))) * 100 : 100;
+  const currentThreshold = rank.current_threshold || 0;
+  const xpProgress = nextRank ? ((xp - currentThreshold) / (nextRank.xp_needed - currentThreshold)) * 100 : 100;
   const earnedBadges = (profileStats?.badges || []).filter(b => b.earned).length;
   const totalBadges = (profileStats?.badges || []).length;
 
