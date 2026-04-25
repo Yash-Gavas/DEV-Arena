@@ -42,13 +42,19 @@ function PostCard({ post, onLike, onComment, onDelete, currentUserId }) {
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isAuthor = currentUserId && post.user_id === currentUserId;
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this post? This cannot be undone.')) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 4000);
+      return;
+    }
     setDeleting(true);
     await onDelete(post.post_id);
     setDeleting(false);
+    setConfirmDelete(false);
   };
 
   const handleComment = async () => {
@@ -90,9 +96,19 @@ function PostCard({ post, onLike, onComment, onDelete, currentUserId }) {
             {post.difficulty && <Badge className={`text-[9px] ${diffColors[post.difficulty] || ''}`}>{post.difficulty}</Badge>}
             {isAuthor && (
               <button onClick={handleDelete} disabled={deleting}
-                className="text-zinc-600 hover:text-red-400 transition-colors ml-1"
+                className={`flex items-center gap-1 transition-all rounded px-1.5 py-0.5 ${
+                  confirmDelete
+                    ? 'bg-red-600/20 border border-red-500/40 text-red-400'
+                    : 'text-zinc-600 hover:text-red-400 hover:bg-red-600/10'
+                } ml-1`}
                 data-testid={`delete-post-${post.post_id}`} title="Delete post">
-                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                {deleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : confirmDelete ? (
+                  <span className="text-[10px] font-semibold">Confirm Delete?</span>
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
               </button>
             )}
           </div>
