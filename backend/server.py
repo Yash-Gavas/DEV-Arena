@@ -564,6 +564,41 @@ async def get_profile_stats(request: Request):
         }
     }
 
+# ==================== LEADERBOARD ====================
+@api_router.get("/leaderboard")
+async def get_leaderboard(request: Request):
+    await get_current_user(request)
+    # Get all users with their stats
+    users = await db.users.find({}, {"_id": 0, "user_id": 1, "name": 1, "picture": 1, "interviews_completed": 1, "problems_solved": 1}).to_list(100)
+    leaderboard = []
+    for u in users:
+        uid = u["user_id"]
+        solved = await db.submissions.count_documents({"user_id": uid, "result.passed": True})
+        interviews = await db.interviews.count_documents({"user_id": uid, "status": "completed"})
+        posts = await db.community_posts.count_documents({"user_id": uid})
+        reports = await db.reports.find({"user_id": uid}, {"_id": 0, "overall_score": 1}).to_list(100)
+        max_score = max((r.get("overall_score", 0) for r in reports), default=0)
+        avg_score = round(sum(r.get("overall_score", 0) for r in reports) / max(len(reports), 1))
+        xp = interviews * 100 + solved * 20 + posts * 5
+        rank = get_rank(xp)
+        leaderboard.append({
+            "user_id": uid,
+            "name": u.get("name", "Anonymous"),
+            "picture": u.get("picture", ""),
+            "xp": xp,
+            "rank": rank["name"],
+            "rank_color": rank["color"],
+            "problems_solved": solved,
+            "interviews_completed": interviews,
+            "max_score": max_score,
+            "avg_score": avg_score,
+        })
+    leaderboard.sort(key=lambda x: x["xp"], reverse=True)
+    # Assign position
+    for i, entry in enumerate(leaderboard):
+        entry["position"] = i + 1
+    return {"leaderboard": leaderboard}
+
 # ==================== PROCTORING ====================
 @api_router.post("/proctoring/event")
 async def log_proctoring_event(event: ProctoringEvent, request: Request):

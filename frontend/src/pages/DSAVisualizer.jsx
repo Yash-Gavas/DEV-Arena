@@ -284,6 +284,144 @@ function ThreeCanvas({ selectedDS, activeIndices, highlightEdges }) {
         const isActive = activeSet.has(i);
         groupRef.current.add(createNode(positions[i], String(label), '#06B6D4', isActive));
       });
+    } else if (ds.key === 'queue') {
+      const data = ds.data || [];
+      const spacing = 1.5;
+      const offset = (data.length - 1) * spacing / 2;
+      data.forEach((val, i) => {
+        const x = i * spacing - offset;
+        const isActive = activeSet.has(i);
+        const geo = new THREE.BoxGeometry(1.2, 0.9, 0.5);
+        const mat = new THREE.MeshStandardMaterial({
+          color: isActive ? '#EAB308' : '#F59E0B',
+          emissive: isActive ? '#F59E0B' : '#111',
+          emissiveIntensity: isActive ? 0.4 : 0, metalness: 0.2, roughness: 0.5
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x, 0, 0);
+        if (isActive) mesh.userData.pulse = true;
+        groupRef.current.add(mesh);
+        const valS = createTextSprite(String(val), '#fff', 40);
+        valS.position.set(x, 0, 0.35);
+        groupRef.current.add(valS);
+        if (i < data.length - 1) {
+          groupRef.current.add(createArrow([x + 0.65, 0, 0], [x + spacing - 0.65, 0, 0], '#F59E0B', hlEdges.has(`${i}-${i+1}`)));
+        }
+      });
+      // FRONT and REAR labels
+      if (data.length > 0) {
+        const frontLbl = createTextSprite('FRONT', '#22C55E', 28);
+        frontLbl.position.set(-offset, -0.9, 0);
+        groupRef.current.add(frontLbl);
+        groupRef.current.add(createArrow([-offset, -0.7, 0], [-offset, -0.5, 0], '#22C55E', true));
+        const rearLbl = createTextSprite('REAR', '#EF4444', 28);
+        rearLbl.position.set((data.length - 1) * spacing - offset, -0.9, 0);
+        groupRef.current.add(rearLbl);
+        groupRef.current.add(createArrow([(data.length-1)*spacing - offset, -0.7, 0], [(data.length-1)*spacing - offset, -0.5, 0], '#EF4444', true));
+      }
+      // Enqueue/Dequeue arrows
+      if (data.length > 0) {
+        groupRef.current.add(createArrow([(data.length-1)*spacing - offset + 1.2, 0, 0], [(data.length-1)*spacing - offset + 0.7, 0, 0], '#22C55E', false));
+        const enqLbl = createTextSprite('ENQUEUE', '#22C55E', 20);
+        enqLbl.position.set((data.length-1)*spacing - offset + 1.8, 0, 0);
+        groupRef.current.add(enqLbl);
+        groupRef.current.add(createArrow([-offset - 0.7, 0, 0], [-offset - 1.2, 0, 0], '#EF4444', false));
+        const deqLbl = createTextSprite('DEQUEUE', '#EF4444', 20);
+        deqLbl.position.set(-offset - 1.8, 0, 0);
+        groupRef.current.add(deqLbl);
+      }
+    } else if (ds.key === 'heap') {
+      // Render as complete binary tree (min-heap)
+      const data = ds.data || [];
+      const buildHeap = (idx, x, y, spread) => {
+        if (idx >= data.length || data[idx] === null) return;
+        const isActive = activeSet.has(idx);
+        groupRef.current.add(createNode([x, y, 0], String(data[idx]), '#EC4899', isActive));
+        const leftIdx = 2 * idx + 1;
+        const rightIdx = 2 * idx + 2;
+        if (leftIdx < data.length && data[leftIdx] !== null) {
+          groupRef.current.add(createArrow([x - 0.2, y - 0.4, 0], [x - spread + 0.2, y - 1.6 + 0.4, 0], '#EC4899', false));
+          buildHeap(leftIdx, x - spread, y - 1.6, spread * 0.55);
+        }
+        if (rightIdx < data.length && data[rightIdx] !== null) {
+          groupRef.current.add(createArrow([x + 0.2, y - 0.4, 0], [x + spread - 0.2, y - 1.6 + 0.4, 0], '#EC4899', false));
+          buildHeap(rightIdx, x + spread, y - 1.6, spread * 0.55);
+        }
+      };
+      const depth = Math.ceil(Math.log2(data.length + 1));
+      buildHeap(0, 0, depth * 0.9, Math.max(2, depth * 1.1));
+      if (data.length > 0) {
+        const rootLbl = createTextSprite('MIN', '#EC4899', 24);
+        rootLbl.position.set(0, depth * 0.9 + 0.8, 0);
+        groupRef.current.add(rootLbl);
+      }
+    } else if (ds.key === 'trie') {
+      // Build trie from words
+      const words = ds.data || [];
+      const root = { ch: 'root', children: {} };
+      words.forEach(word => {
+        let node = root;
+        for (const c of String(word)) {
+          if (!node.children[c]) node.children[c] = { ch: c, children: {}, end: false };
+          node = node.children[c];
+        }
+        node.end = true;
+      });
+      // Render trie as tree
+      let nodeIdx = 0;
+      const renderTrie = (node, x, y, spread) => {
+        const idx = nodeIdx++;
+        const isEnd = node.end;
+        const color = isEnd ? '#22C55E' : '#14B8A6';
+        groupRef.current.add(createNode([x, y, 0], node.ch, color, activeSet.has(idx)));
+        if (isEnd) {
+          const endLbl = createTextSprite('*', '#22C55E', 28);
+          endLbl.position.set(x + 0.5, y + 0.3, 0);
+          groupRef.current.add(endLbl);
+        }
+        const keys = Object.keys(node.children);
+        const childSpread = spread / Math.max(keys.length, 1);
+        keys.forEach((key, i) => {
+          const cx = x + (i - (keys.length - 1) / 2) * childSpread;
+          const cy = y - 1.5;
+          groupRef.current.add(createArrow([x, y - 0.4, 0], [cx, cy + 0.4, 0], '#14B8A6', false));
+          renderTrie(node.children[key], cx, cy, childSpread * 0.8);
+        });
+      };
+      renderTrie(root, 0, 3, Math.max(3, words.length * 0.8));
+    } else if (ds.key === 'hashmap') {
+      // Render as bucket array with key-value pairs
+      const entries = ds.data || [];
+      const bucketCount = Math.max(5, entries.length);
+      entries.forEach((entry, i) => {
+        const y = (bucketCount - 1 - i) * 1.1 - ((bucketCount - 1) * 0.55);
+        // Bucket box
+        const geo = new THREE.BoxGeometry(1, 0.8, 0.4);
+        const mat = new THREE.MeshStandardMaterial({
+          color: activeSet.has(i) ? '#EAB308' : '#F97316',
+          emissive: activeSet.has(i) ? '#F97316' : '#111',
+          emissiveIntensity: activeSet.has(i) ? 0.3 : 0, metalness: 0.2, roughness: 0.5
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(-2, y, 0);
+        groupRef.current.add(mesh);
+        // Index label
+        const idxLbl = createTextSprite(`[${i}]`, '#666', 24);
+        idxLbl.position.set(-3.2, y, 0);
+        groupRef.current.add(idxLbl);
+        // Arrow from bucket to value
+        groupRef.current.add(createArrow([-1.45, y, 0], [-0.6, y, 0], '#F97316', false));
+        // Key-Value node
+        const label = typeof entry === 'object' ? `${entry.key}:${entry.value}` : String(entry);
+        groupRef.current.add(createNode([0.3, y, 0], label, '#F97316', activeSet.has(i)));
+      });
+      // Hash Function label
+      if (entries.length > 0) {
+        const topY = (bucketCount - 1) * 1.1 - ((bucketCount - 1) * 0.55) + 1;
+        const hfLbl = createTextSprite('hash(key) % size', '#F97316', 22);
+        hfLbl.position.set(-1, topY, 0);
+        groupRef.current.add(hfLbl);
+      }
     }
   }, [selectedDS, activeIndices, highlightEdges, createNode, createArrow, createTextSprite]);
 
@@ -417,11 +555,26 @@ function parseGraph(input) {
   };
 }
 
+function parseTrie(input) {
+  return input.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
+function parseHashMap(input) {
+  return input.split(',').map(s => {
+    const parts = s.trim().split(':');
+    return { key: parts[0]?.trim() || '', value: parts[1]?.trim() || '' };
+  }).filter(p => p.key);
+}
+
 const DS_CONFIGS = [
   { key: 'array', label: 'Array', color: '#FF3B30', placeholder: '5, 3, 8, 1, 9, 2, 7, 4', hint: 'Comma-separated values', desc: 'Linear structure. O(1) access by index.' },
   { key: 'linkedlist', label: 'Linked List', color: '#22C55E', placeholder: '1 -> 2 -> 3 -> 4 -> 5 -> 6', hint: 'Use -> or commas between values', desc: 'Nodes with next pointers. O(1) insert at head.' },
   { key: 'binarytree', label: 'Binary Tree', color: '#007AFF', placeholder: '10, 5, 15, 3, 7, null, 20, 1, 4', hint: 'Level-order (BFS). Use null for empty nodes.', desc: 'BST: left < parent < right. O(log n) operations.' },
+  { key: 'queue', label: 'Queue', color: '#F59E0B', placeholder: '10, 20, 30, 40, 50', hint: 'Front to rear. First element = FRONT.', desc: 'FIFO. O(1) enqueue/dequeue. Used in BFS.' },
   { key: 'stack', label: 'Stack', color: '#A855F7', placeholder: '10, 20, 30, 40, 50', hint: 'Bottom to top. Last element = TOP.', desc: 'LIFO. O(1) push/pop. Used in DFS, undo.' },
+  { key: 'heap', label: 'Heap', color: '#EC4899', placeholder: '1, 3, 6, 5, 9, 8, 10, 7', hint: 'Level-order array. Min-heap: parent <= children.', desc: 'Complete binary tree. O(log n) insert/extract.' },
+  { key: 'trie', label: 'Trie', color: '#14B8A6', placeholder: 'cat, car, card, care, bat, bar', hint: 'Comma-separated words to insert.', desc: 'Prefix tree. O(m) search where m = word length.' },
+  { key: 'hashmap', label: 'Hash Map', color: '#F97316', placeholder: 'a:1, b:2, c:3, d:4, e:5', hint: 'key:value pairs, comma-separated.', desc: 'O(1) average lookup. Hash function maps keys to buckets.' },
   { key: 'graph', label: 'Graph', color: '#06B6D4', placeholder: 'A-B, B-C, C-D, D-E, E-A, A-C', hint: 'Edge pairs: Node1-Node2, separated by commas', desc: 'Nodes + directed edges. BFS/DFS traversal.' },
 ];
 
@@ -443,12 +596,16 @@ export default function DSAVisualizer() {
 
   const applyInput = useCallback(() => {
     const raw = userInput.trim() || config.placeholder;
-    if (dsKey === 'array' || dsKey === 'stack') {
+    if (dsKey === 'array' || dsKey === 'stack' || dsKey === 'queue') {
       setSelectedDS({ key: dsKey, data: parseArray(raw) });
     } else if (dsKey === 'linkedlist') {
       setSelectedDS({ key: dsKey, data: parseLinkedList(raw) });
-    } else if (dsKey === 'binarytree') {
+    } else if (dsKey === 'binarytree' || dsKey === 'heap') {
       setSelectedDS({ key: dsKey, data: parseBinaryTree(raw) });
+    } else if (dsKey === 'trie') {
+      setSelectedDS({ key: dsKey, data: parseTrie(raw) });
+    } else if (dsKey === 'hashmap') {
+      setSelectedDS({ key: dsKey, data: parseHashMap(raw) });
     } else if (dsKey === 'graph') {
       const parsed = parseGraph(raw);
       setSelectedDS({ key: dsKey, data: parsed.nodes, graphData: parsed });
@@ -462,12 +619,16 @@ export default function DSAVisualizer() {
   useEffect(() => {
     setUserInput('');
     const defaultInput = config.placeholder;
-    if (dsKey === 'array' || dsKey === 'stack') {
+    if (dsKey === 'array' || dsKey === 'stack' || dsKey === 'queue') {
       setSelectedDS({ key: dsKey, data: parseArray(defaultInput) });
     } else if (dsKey === 'linkedlist') {
       setSelectedDS({ key: dsKey, data: parseLinkedList(defaultInput) });
-    } else if (dsKey === 'binarytree') {
+    } else if (dsKey === 'binarytree' || dsKey === 'heap') {
       setSelectedDS({ key: dsKey, data: parseBinaryTree(defaultInput) });
+    } else if (dsKey === 'trie') {
+      setSelectedDS({ key: dsKey, data: parseTrie(defaultInput) });
+    } else if (dsKey === 'hashmap') {
+      setSelectedDS({ key: dsKey, data: parseHashMap(defaultInput) });
     } else if (dsKey === 'graph') {
       const parsed = parseGraph(defaultInput);
       setSelectedDS({ key: dsKey, data: parsed.nodes, graphData: parsed });

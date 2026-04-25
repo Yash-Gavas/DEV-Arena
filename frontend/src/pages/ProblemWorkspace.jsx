@@ -51,13 +51,13 @@ const diffColors = {
 };
 
 const COMPLEXITIES = [
-  { label: 'O(1)', value: 1, color: '#22C55E' },
-  { label: 'O(log n)', value: 8, color: '#3B82F6' },
-  { label: 'O(n)', value: 20, color: '#06B6D4' },
-  { label: 'O(n log n)', value: 35, color: '#A855F7' },
-  { label: 'O(n\u00B2)', value: 60, color: '#F59E0B' },
-  { label: 'O(2\u207F)', value: 85, color: '#EF4444' },
-  { label: 'O(n!)', value: 100, color: '#DC2626' },
+  { label: 'O(1)', fn: () => 1, color: '#22C55E' },
+  { label: 'O(log n)', fn: (n) => Math.log2(n + 1), color: '#3B82F6' },
+  { label: 'O(n)', fn: (n) => n, color: '#06B6D4' },
+  { label: 'O(n log n)', fn: (n) => n * Math.log2(n + 1), color: '#A855F7' },
+  { label: 'O(n\u00B2)', fn: (n) => n * n, color: '#F59E0B' },
+  { label: 'O(2\u207F)', fn: (n) => Math.pow(2, n), color: '#EF4444' },
+  { label: 'O(n!)', fn: (n) => { let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; }, color: '#DC2626' },
 ];
 
 function matchComplexity(str) {
@@ -74,40 +74,141 @@ function matchComplexity(str) {
 }
 
 function ComplexityGraph({ currentComplexity }) {
+  const canvasRef = useRef(null);
   const matchIdx = matchComplexity(currentComplexity);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    const pad = { l: 45, r: 12, t: 12, b: 30 };
+    const cw = W - pad.l - pad.r;
+    const ch = H - pad.t - pad.b;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Background
+    ctx.fillStyle = '#0A0A0A';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (ch / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+    }
+    for (let i = 0; i <= 5; i++) {
+      const x = pad.l + (cw / 5) * i;
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ch); ctx.stroke();
+    }
+
+    // Axes
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ch); ctx.lineTo(pad.l + cw, pad.t + ch); ctx.stroke();
+
+    // Axis labels
+    ctx.fillStyle = '#555';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Input Size (n)', pad.l + cw / 2, H - 4);
+    ctx.save();
+    ctx.translate(10, pad.t + ch / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Operations', 0, 0);
+    ctx.restore();
+
+    // N range ticks
+    const nMax = 12;
+    for (let i = 0; i <= 4; i++) {
+      const n = Math.round((nMax / 4) * i);
+      const x = pad.l + (cw / 4) * i;
+      ctx.fillStyle = '#444';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(n), x, pad.t + ch + 14);
+    }
+
+    // Compute max value for scaling (clamp exponential)
+    const yMax = 80;
+
+    // Draw curves
+    COMPLEXITIES.forEach((c, idx) => {
+      const isMatch = idx === matchIdx;
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = isMatch ? 2.5 : 1;
+      ctx.globalAlpha = isMatch ? 1 : 0.25;
+      ctx.beginPath();
+      for (let px = 0; px <= cw; px++) {
+        const n = (px / cw) * nMax;
+        let y = c.fn(Math.max(n, 0.01));
+        y = Math.min(y, yMax);
+        const plotY = pad.t + ch - (y / yMax) * ch;
+        const plotX = pad.l + px;
+        if (px === 0) ctx.moveTo(plotX, plotY);
+        else ctx.lineTo(plotX, plotY);
+      }
+      ctx.stroke();
+
+      // Label at end of curve
+      const endN = nMax;
+      let endY = Math.min(c.fn(endN), yMax);
+      const labelY = pad.t + ch - (endY / yMax) * ch;
+      ctx.globalAlpha = isMatch ? 1 : 0.4;
+      ctx.fillStyle = c.color;
+      ctx.font = isMatch ? 'bold 9px monospace' : '8px monospace';
+      ctx.textAlign = 'left';
+      const labelX = pad.l + cw + 2;
+      if (labelX + 50 < W) {
+        // No room for right labels in our width, so skip
+      }
+    });
+
+    ctx.globalAlpha = 1;
+
+    // Legend
+    const legendY = pad.t + 4;
+    COMPLEXITIES.forEach((c, idx) => {
+      const isMatch = idx === matchIdx;
+      const lx = pad.l + 6 + idx * 62;
+      const ly = legendY;
+      ctx.globalAlpha = isMatch ? 1 : 0.35;
+      ctx.fillStyle = c.color;
+      ctx.fillRect(lx, ly, 8, 8);
+      ctx.font = isMatch ? 'bold 8px monospace' : '8px monospace';
+      ctx.fillStyle = isMatch ? '#fff' : '#666';
+      ctx.textAlign = 'left';
+      ctx.fillText(c.label, lx + 11, ly + 7);
+    });
+    ctx.globalAlpha = 1;
+
+    // "Your solution" indicator
+    if (matchIdx >= 0) {
+      const c = COMPLEXITIES[matchIdx];
+      const midN = nMax * 0.6;
+      let midY = Math.min(c.fn(midN), yMax);
+      const px = pad.l + (midN / nMax) * cw;
+      const py = pad.t + ch - (midY / yMax) * ch;
+      ctx.fillStyle = c.color;
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Your Solution', px + 8, py + 3);
+    }
+  }, [matchIdx]);
+
   return (
     <div className="bg-[#111] rounded-md p-3 border border-white/5" data-testid="complexity-graph">
-      <p className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider mb-2.5">Time Complexity Comparison</p>
-      <div className="space-y-1.5">
-        {COMPLEXITIES.map((c, i) => {
-          const isMatch = i === matchIdx;
-          return (
-            <div key={c.label} className="flex items-center gap-2">
-              <span className={`text-[10px] font-mono w-[70px] text-right ${isMatch ? 'text-white font-bold' : 'text-zinc-500'}`}>
-                {c.label}
-              </span>
-              <div className="flex-1 h-4 bg-black/50 rounded overflow-hidden relative">
-                <div
-                  className={`h-full rounded transition-all duration-700 ${isMatch ? 'opacity-100' : 'opacity-30'}`}
-                  style={{ width: `${c.value}%`, backgroundColor: c.color }}
-                />
-                {isMatch && (
-                  <div className="absolute inset-0 flex items-center justify-end pr-1.5">
-                    <span className="text-[8px] font-bold text-white drop-shadow-lg">YOUR SOLUTION</span>
-                  </div>
-                )}
-              </div>
-              <span className={`text-[9px] w-[50px] ${
-                isMatch ? 'text-white font-bold' : i <= 2 ? 'text-emerald-500' : i <= 3 ? 'text-amber-500' : 'text-red-500'
-              }`}>
-                {i === 0 ? 'Best' : i <= 2 ? 'Good' : i === 3 ? 'Fair' : 'Slow'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <p className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider mb-2">Time Complexity Comparison</p>
+      <canvas ref={canvasRef} width={450} height={200} className="w-full rounded" style={{ imageRendering: 'auto' }} />
       {matchIdx === -1 && currentComplexity && (
-        <p className="text-[9px] text-zinc-500 mt-2 italic">Complexity "{currentComplexity}" shown above in badges</p>
+        <p className="text-[9px] text-zinc-500 mt-2 italic">Complexity: {currentComplexity}</p>
       )}
     </div>
   );
