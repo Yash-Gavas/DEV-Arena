@@ -213,17 +213,20 @@ def build_system_prompt(interview, messages, round_num):
     history = "\n".join([f"{'Interviewer' if m['role']=='interviewer' else 'Candidate'}: {m['content']}" for m in messages[-16:]])
     return f"""You are Alex Chen, a Senior Technical Interviewer at a top tech company conducting a live, realistic interview.
 
-Personality: Professional but BRUTALLY HONEST. You are NOT a cheerleader. You give direct, candid feedback.
+Personality: Professional but BRUTALLY HONEST. You are NOT a cheerleader. You give direct, candid, sometimes harsh feedback — exactly like a real FAANG interviewer.
 
 CRITICAL BEHAVIOR RULES:
-- If the candidate gives a WRONG answer, say it is wrong clearly. Explain what is incorrect and why. Do NOT sugarcoat.
-- If the answer is PARTIALLY correct, acknowledge what is right but firmly point out what is missing or wrong.
-- If the answer is VAGUE or hand-wavy, push back: "That's too vague. Can you be more specific?" or "That's not quite right."
-- If the candidate doesn't know, say "That's incorrect" or "You seem unsure about this" — do NOT pretend it was a good attempt.
-- ONLY give praise when the answer is genuinely correct and well-explained.
-- After pointing out errors, give ONE follow-up chance or move to next question.
-- Track quality mentally: poor answers should lower your assessment, not be glossed over.
-- Be like a real FAANG interviewer — respectful but demanding. No participation trophies.
+- If the candidate gives a WRONG answer, say it is WRONG immediately and clearly. Say "That's incorrect." or "No, that's wrong." then explain why. NEVER say "Good try" or "That's a reasonable attempt" for wrong answers.
+- If the candidate cannot solve a DSA problem or writes buggy code, say directly: "This solution doesn't work. Let me point out the issues..." or "You weren't able to solve this one. The correct approach would be..."
+- If the answer is PARTIALLY correct, say "You're partially right, but you're missing key parts..." — be specific about what's wrong.
+- If the answer is VAGUE or hand-wavy, push back HARD: "That's too vague and wouldn't pass in a real interview" or "That explanation lacks depth — can you be more precise?"
+- If the candidate doesn't know something, say "You don't seem to know this concept" or "This is a fundamental concept you should know for this role" — do NOT pretend it was okay.
+- ONLY give genuine praise when the answer is truly correct AND well-explained. Generic encouragement like "Great!" for mediocre answers is FORBIDDEN.
+- After pointing out errors, give ONE follow-up chance, then move on if they still struggle. Note that they struggled.
+- Keep a MENTAL SCORECARD. If the candidate has been struggling with multiple questions, explicitly mention it: "You've had difficulty with the last few questions. Let's move on, but this is an area you need to work on."
+- When wrapping up any topic or round, give an HONEST mini-assessment: "Your DSA skills need significant work" or "Your system design understanding is strong" — be truthful.
+- NEVER use phrases like: "That's okay", "Don't worry about it", "Good effort though", "You're on the right track" — unless they genuinely are.
+- Be like a real FAANG interviewer — respectful but DEMANDING. No participation trophies. No false encouragement.
 
 Interview Context:
 - Role: {interview.get('role', 'Software Engineer')}
@@ -238,7 +241,7 @@ Conversation:
 
 Guidelines: {ROUND_GUIDELINES.get(round_num, '')}
 
-Rules: ONE question at a time. Never repeat questions. Be conversational. Use markdown for code blocks. Be HONEST about wrong answers — this is how candidates learn."""
+Rules: ONE question at a time. Never repeat questions. Be conversational. Use markdown for code blocks. Be BRUTALLY HONEST about wrong answers — do NOT sugarcoat failure. If the candidate struggles, SAY SO DIRECTLY. This honest feedback is how candidates actually improve."""
 
 @api_router.post("/interviews/start")
 async def start_interview(data: InterviewCreate, request: Request):
@@ -305,7 +308,18 @@ async def next_round(interview_id: str, request: Request):
     system_prompt = build_system_prompt(interview, all_msgs, new_round)
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"iv_{interview_id}_r{new_round}",
                     system_message=system_prompt).with_model("anthropic", "claude-sonnet-4-5-20250929")
-    ai_response = await chat.send_message(UserMessage(text=f"Transition to Round {new_round}. Wrap up and ask first question."))
+    round_names = {1: "Introduction & DSA", 2: "Projects & Core Subjects", 3: "Managerial & System Design", 4: "HR Round"}
+    prev_round_name = round_names.get(new_round - 1, f"Round {new_round - 1}")
+    transition_prompt = f"""We're transitioning from {prev_round_name} to Round {new_round}: {round_names.get(new_round, '')}.
+
+IMPORTANT: Before starting the new round, give a BRIEF but BRUTALLY HONEST assessment of the candidate's performance in the previous round ({prev_round_name}). Be specific:
+- If they struggled with DSA/coding, say so directly (e.g., "You had difficulty solving the coding problems" or "Your algorithm knowledge needs work")
+- If their project discussion was shallow, call it out
+- If they did well, acknowledge it genuinely
+- Rate their performance as: Strong / Adequate / Needs Improvement / Poor
+
+Then smoothly transition and ask the first question of the new round."""
+    ai_response = await chat.send_message(UserMessage(text=transition_prompt))
     ai_msg = {"message_id": f"msg_{uuid.uuid4().hex[:12]}", "interview_id": interview_id,
               "round_number": new_round, "role": "interviewer", "content": ai_response,
               "timestamp": datetime.now(timezone.utc).isoformat()}
@@ -322,7 +336,7 @@ async def end_interview(interview_id: str, request: Request):
     proctoring = await db.proctoring_events.find({"interview_id": interview_id}, {"_id": 0}).to_list(100)
     convo = "\n".join([f"{'Interviewer' if m['role']=='interviewer' else 'Candidate'}: {m['content']}" for m in all_msgs])
     report_chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"rpt_{interview_id}",
-        system_message='Evaluate interview. Return ONLY JSON: {"overall_score":<1-100>,"rounds":[{"round":1,"name":"DSA & Coding","score":<1-100>,"feedback":"<text>"},{"round":2,"name":"Projects & Experience","score":<1-100>,"feedback":"<text>"},{"round":3,"name":"Core CS Fundamentals","score":<1-100>,"feedback":"<text>"},{"round":4,"name":"System Design","score":<1-100>,"feedback":"<text>"}],"strengths":["<s1>","<s2>","<s3>"],"improvements":["<i1>","<i2>","<i3>"],"recommendation":"Strong Hire"|"Hire"|"Lean Hire"|"No Hire","detailed_feedback":"<2 paragraphs>"}'
+        system_message='You are a BRUTALLY HONEST interview evaluator. Evaluate the candidate based on their ACTUAL performance, not effort. If they struggled, give LOW scores. If they gave wrong answers, reflect that. Do NOT inflate scores to be nice. A candidate who could not solve DSA problems should score below 40 in that round. Return ONLY JSON: {"overall_score":<1-100>,"rounds":[{"round":1,"name":"DSA & Coding","score":<1-100>,"feedback":"<honest text>"},{"round":2,"name":"Projects & Core Subjects","score":<1-100>,"feedback":"<honest text>"},{"round":3,"name":"Managerial & System Design","score":<1-100>,"feedback":"<honest text>"},{"round":4,"name":"HR Round","score":<1-100>,"feedback":"<honest text>"}],"strengths":["<s1>","<s2>","<s3>"],"improvements":["<i1>","<i2>","<i3>"],"recommendation":"Strong Hire"|"Hire"|"Lean Hire"|"No Hire","detailed_feedback":"<2 paragraphs of honest assessment>"}'
     ).with_model("anthropic", "claude-sonnet-4-5-20250929")
     report_resp = await report_chat.send_message(UserMessage(
         text=f"Role: {interview.get('role')}\nViolations: {len(proctoring)}\n\n{convo[:8000]}"))
@@ -803,6 +817,17 @@ async def create_community_post(data: CommunityPost, request: Request):
     await db.community_posts.insert_one(post)
     del post["_id"]
     return post
+
+@api_router.delete("/community/posts/{post_id}")
+async def delete_community_post(post_id: str, request: Request):
+    user = await get_current_user(request)
+    post = await db.community_posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own posts")
+    await db.community_posts.delete_one({"post_id": post_id})
+    return {"deleted": True}
 
 @api_router.post("/community/posts/{post_id}/like")
 async def toggle_like(post_id: str, request: Request):

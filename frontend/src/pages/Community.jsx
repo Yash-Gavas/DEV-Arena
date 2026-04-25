@@ -3,7 +3,7 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import {
   Users, Plus, Heart, MessageCircle, Building2, Briefcase, Star,
-  ChevronLeft, ChevronRight, Send, X, Loader2, TrendingUp, Filter
+  ChevronLeft, ChevronRight, Send, X, Loader2, TrendingUp, Filter, Trash2
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -37,10 +37,19 @@ function StarRating({ rating, onChange, readonly = false }) {
   );
 }
 
-function PostCard({ post, onLike, onComment }) {
+function PostCard({ post, onLike, onComment, onDelete, currentUserId }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const isAuthor = currentUserId && post.user_id === currentUserId;
+
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this post? This cannot be undone.')) return;
+    setDeleting(true);
+    await onDelete(post.post_id);
+    setDeleting(false);
+  };
 
   const handleComment = async () => {
     if (!commentText.trim() || submitting) return;
@@ -79,6 +88,13 @@ function PostCard({ post, onLike, onComment }) {
             {post.type === 'review' && post.rating && <StarRating rating={post.rating} readonly />}
             {post.result && <Badge className={`text-[9px] ${resultColors[post.result] || 'bg-white/5 text-zinc-400'}`}>{post.result}</Badge>}
             {post.difficulty && <Badge className={`text-[9px] ${diffColors[post.difficulty] || ''}`}>{post.difficulty}</Badge>}
+            {isAuthor && (
+              <button onClick={handleDelete} disabled={deleting}
+                className="text-zinc-600 hover:text-red-400 transition-colors ml-1"
+                data-testid={`delete-post-${post.post_id}`} title="Delete post">
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </button>
+            )}
           </div>
         </div>
 
@@ -222,6 +238,14 @@ export default function Community() {
     } catch {}
   };
 
+  const handleDelete = async (postId) => {
+    try {
+      await axios.delete(`${API}/community/posts/${postId}`, { withCredentials: true });
+      setPosts(prev => prev.filter(p => p.post_id !== postId));
+      setTotal(prev => prev - 1);
+    } catch {}
+  };
+
   const handleSubmit = async () => {
     if (!formTitle.trim() || !formContent.trim() || submitting) return;
     setSubmitting(true);
@@ -308,7 +332,7 @@ export default function Community() {
         ) : (
           <div className="space-y-4">
             {posts.map(p => (
-              <PostCard key={p.post_id} post={p} onLike={handleLike} onComment={handleComment} />
+              <PostCard key={p.post_id} post={p} onLike={handleLike} onComment={handleComment} onDelete={handleDelete} currentUserId={user?.user_id} />
             ))}
           </div>
         )}

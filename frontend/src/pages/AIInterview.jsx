@@ -101,11 +101,11 @@ export default function AIInterview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // Show IDE during DSA round
+  // Show IDE during DSA (R1) and Projects/SQL (R2) rounds
   useEffect(() => {
     if (!interview) return;
     const round = interview.current_round || 1;
-    setShowIDE(round === 1 && messages.length > 2);
+    setShowIDE((round === 1 || round === 2) && messages.length > 2);
   }, [interview, messages.length]);
 
   // Tab switch proctoring
@@ -539,7 +539,7 @@ export default function AIInterview() {
                   Next Round <ArrowRight className="w-3 h-3 ml-1" />
                 </Button>
               )}
-              {currentRound === 1 && (
+              {(currentRound === 1 || currentRound === 2) && (
                 <Button variant="outline" onClick={() => setShowIDE(!showIDE)}
                   data-testid="toggle-ide-btn"
                   className={`text-xs h-7 px-3 ${showIDE ? 'text-blue-400 border-blue-500/30' : 'border-white/10 text-zinc-400'}`}>
