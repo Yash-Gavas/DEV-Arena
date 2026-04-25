@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Code2, LayoutDashboard, BookOpen, BrainCircuit, LogOut, Swords, Database, Eye, Menu, X } from 'lucide-react';
+import { Code2, LayoutDashboard, BookOpen, BrainCircuit, LogOut, Swords, Database, Eye, Menu, X, Users } from 'lucide-react';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -9,6 +9,7 @@ const navItems = [
   { path: '/problems', label: 'Problems', icon: Code2 },
   { path: '/sql', label: 'SQL Lab', icon: Database },
   { path: '/visualizer', label: '3D View', icon: Eye },
+  { path: '/community', label: 'Community', icon: Users },
   { path: '/resources', label: 'Resources', icon: BookOpen },
 ];
 

@@ -14,6 +14,7 @@ import Resources from "./pages/Resources";
 import ProblemWorkspace from "./pages/ProblemWorkspace";
 import SQLPlayground from "./pages/SQLPlayground";
 import DSAVisualizer from "./pages/DSAVisualizer";
+import Community from "./pages/Community";
 import { Toaster } from "./components/ui/sonner";
 
 function AppRouter() {
@@ -36,6 +37,7 @@ function AppRouter() {
         <Route path="/problems/:problemId" element={<ProtectedRoute><ProblemWorkspace /></ProtectedRoute>} />
         <Route path="/sql" element={<ProtectedRoute><SQLPlayground /></ProtectedRoute>} />
         <Route path="/visualizer" element={<ProtectedRoute><DSAVisualizer /></ProtectedRoute>} />
+        <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
       </Routes>
       <Toaster />
     </>

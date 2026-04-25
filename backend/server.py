@@ -54,6 +54,20 @@ class SQLSubmission(BaseModel):
     sql_id: Optional[str] = ""
     query: str
 
+class CommunityPost(BaseModel):
+    type: str  # "experience" or "review"
+    company: Optional[str] = ""
+    role: Optional[str] = ""
+    title: str
+    content: str
+    rating: Optional[int] = None  # 1-5 for reviews
+    difficulty: Optional[str] = ""  # Easy/Medium/Hard
+    result: Optional[str] = ""  # Selected/Rejected/Pending
+    tags: Optional[List[str]] = []
+
+class CommentCreate(BaseModel):
+    content: str
+
 # ==================== AUTH HELPER ====================
 async def get_current_user(request: Request):
     session_token = request.cookies.get("session_token")
@@ -180,7 +194,13 @@ After their introduction, transition to DSA. Ask algorithm/data structure proble
 When presenting a coding problem, format it clearly with: Problem Title, Description, Examples (Input/Output), and Constraints. Tell the candidate to solve it in the code editor on the right.
 Patterns: sliding window, two pointers, binary search, DFS/BFS, DP, greedy.""",
     2: """Ask about their most impactful project. Probe technical decisions, architecture choices. Ask about challenges, teamwork, specific contributions.
-Then transition to Core CS: OS (Process vs Thread, Deadlock, Memory), DBMS (ACID, Normalization, Indexing), CN (TCP/UDP, HTTP, DNS), SQL (JOINs, optimization). Ask scenarios, not definitions.""",
+Then transition to Core CS: OS (Process vs Thread, Deadlock, Memory), DBMS (ACID, Normalization, Indexing), CN (TCP/UDP, HTTP, DNS).
+IMPORTANT: You MUST also ask SQL queries. Give them a scenario with tables and ask them to write SQL. Examples:
+- Write a query to find the second highest salary from employees table
+- Write a query using JOIN to find employees and their department names
+- Write a query to find duplicate emails using GROUP BY and HAVING
+- Write a self-join query to find employees earning more than their managers
+Ask at least 1-2 SQL questions during this round. Ask them to write the actual SQL query. Evaluate their query for correctness.""",
     3: """Behavioral/Managerial: Ask about handling conflicts, tight deadlines, leadership, mentoring. Use STAR format probing.
 System Design: Ask to design a real system (URL shortener, chat app, notification service). Probe scalability, availability, consistency, caching, API design, trade-offs.""",
     4: """HR Round: Ask about career goals, why this company/role, salary expectations, relocation willingness, work-life balance views, strengths/weaknesses.
@@ -738,6 +758,90 @@ Rules:
         logger.error(f"Custom viz parse error: {e}")
         result = {"data_structure": "array", "title": "Visualization", "data": [1,2,3,4,5], "steps": [{"step": 1, "title": "Parse error", "description": response[:500], "active_indices": [], "state": "", "highlight": ""}], "explanation": response[:300], "complexity": {"time": "?", "space": "?"}}
     return result
+
+# ==================== COMMUNITY ====================
+@api_router.get("/community/posts")
+async def list_community_posts(request: Request):
+    user = await get_current_user(request)
+    post_type = request.query_params.get("type", "all")
+    page = int(request.query_params.get("page", 1))
+    limit = int(request.query_params.get("limit", 20))
+    sort = request.query_params.get("sort", "newest")
+    query = {}
+    if post_type and post_type != "all": query["type"] = post_type
+    total = await db.community_posts.count_documents(query)
+    sort_key = [("created_at", -1)] if sort == "newest" else [("likes_count", -1)]
+    posts = await db.community_posts.find(query, {"_id": 0}).sort(sort_key).skip((page - 1) * limit).limit(limit).to_list(limit)
+    # Attach user info
+    for p in posts:
+        u = await db.users.find_one({"user_id": p.get("user_id")}, {"_id": 0, "name": 1, "picture": 1})
+        p["author"] = u or {"name": "Anonymous"}
+        p["liked_by_me"] = user["user_id"] in p.get("likes", [])
+    return {"posts": posts, "total": total, "page": page, "total_pages": (total + limit - 1) // limit}
+
+@api_router.post("/community/posts")
+async def create_community_post(data: CommunityPost, request: Request):
+    user = await get_current_user(request)
+    post = {
+        "post_id": f"post_{uuid.uuid4().hex[:12]}",
+        "user_id": user["user_id"],
+        "type": data.type,
+        "company": data.company,
+        "role": data.role,
+        "title": data.title,
+        "content": data.content,
+        "rating": data.rating,
+        "difficulty": data.difficulty,
+        "result": data.result,
+        "tags": data.tags or [],
+        "likes": [],
+        "likes_count": 0,
+        "comments": [],
+        "comments_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.community_posts.insert_one(post)
+    del post["_id"]
+    return post
+
+@api_router.post("/community/posts/{post_id}/like")
+async def toggle_like(post_id: str, request: Request):
+    user = await get_current_user(request)
+    post = await db.community_posts.find_one({"post_id": post_id})
+    if not post: raise HTTPException(status_code=404, detail="Post not found")
+    likes = post.get("likes", [])
+    if user["user_id"] in likes:
+        likes.remove(user["user_id"])
+    else:
+        likes.append(user["user_id"])
+    await db.community_posts.update_one({"post_id": post_id}, {"$set": {"likes": likes, "likes_count": len(likes)}})
+    return {"liked": user["user_id"] in likes, "likes_count": len(likes)}
+
+@api_router.post("/community/posts/{post_id}/comment")
+async def add_comment(post_id: str, data: CommentCreate, request: Request):
+    user = await get_current_user(request)
+    post = await db.community_posts.find_one({"post_id": post_id})
+    if not post: raise HTTPException(status_code=404, detail="Post not found")
+    comment = {
+        "comment_id": f"cmt_{uuid.uuid4().hex[:8]}",
+        "user_id": user["user_id"],
+        "author_name": user.get("name", "Anonymous"),
+        "content": data.content,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.community_posts.update_one({"post_id": post_id}, {"$push": {"comments": comment}, "$inc": {"comments_count": 1}})
+    return comment
+
+@api_router.get("/community/stats")
+async def community_stats(request: Request):
+    await get_current_user(request)
+    total = await db.community_posts.count_documents({})
+    experiences = await db.community_posts.count_documents({"type": "experience"})
+    reviews = await db.community_posts.count_documents({"type": "review"})
+    pipeline = [{"$match": {"type": "review", "rating": {"$exists": True, "$ne": None}}}, {"$group": {"_id": None, "avg": {"$avg": "$rating"}}}]
+    avg_result = await db.community_posts.aggregate(pipeline).to_list(1)
+    avg_rating = round(avg_result[0]["avg"], 1) if avg_result else 0
+    return {"total": total, "experiences": experiences, "reviews": reviews, "avg_rating": avg_rating}
 
 # ==================== SEED ====================
 async def seed_database():
