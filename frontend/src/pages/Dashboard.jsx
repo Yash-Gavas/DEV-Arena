@@ -9,6 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { ThreeBackground } from '../components/ThreeBackground';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -57,8 +58,9 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] pt-20 pb-10 px-4 sm:px-6 lg:px-8" data-testid="dashboard">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[#0A0A0A] pt-20 pb-10 px-4 sm:px-6 lg:px-8 relative overflow-hidden" data-testid="dashboard">
+      <ThreeBackground variant="grid" opacity={0.15} />
+      <div className="max-w-7xl mx-auto relative z-10">
         {/* Welcome + Rank */}
         <div className="flex items-start justify-between mb-8 animate-fade-in-up">
           <div>

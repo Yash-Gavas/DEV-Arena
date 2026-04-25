@@ -80,20 +80,27 @@ export default function InterviewReport() {
 
         {/* Round Scores */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {(report.rounds || []).map(r => (
-            <Card key={r.round} className="bg-[#141414] border-white/10" data-testid={`round-score-${r.round}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold">R{r.round}: {r.name}</p>
-                  <span className={`text-lg font-bold font-['Chivo'] ${
-                    r.score >= 75 ? 'text-green-400' : r.score >= 50 ? 'text-yellow-400' : 'text-red-400'
-                  }`}>{r.score}</span>
-                </div>
-                <Progress value={r.score} className="h-1.5 mb-2" />
-                <p className="text-xs text-zinc-400">{r.feedback}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {(report.rounds || []).map(r => {
+            const notConducted = r.score === 0 || r.feedback?.toLowerCase().includes('not conducted');
+            return (
+              <Card key={r.round} className={`bg-[#141414] border-white/10 ${notConducted ? 'opacity-50' : ''}`} data-testid={`round-score-${r.round}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold">R{r.round}: {r.name}</p>
+                    {notConducted ? (
+                      <span className="text-xs text-zinc-600 font-mono">N/A</span>
+                    ) : (
+                      <span className={`text-lg font-bold font-['Chivo'] ${
+                        r.score >= 75 ? 'text-green-400' : r.score >= 50 ? 'text-yellow-400' : 'text-red-400'
+                      }`}>{r.score}</span>
+                    )}
+                  </div>
+                  {!notConducted && <Progress value={r.score} className="h-1.5 mb-2" />}
+                  <p className="text-xs text-zinc-400">{r.feedback}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* Strengths & Improvements */}

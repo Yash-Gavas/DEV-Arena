@@ -334,22 +334,62 @@ async def end_interview(interview_id: str, request: Request):
     if not interview: raise HTTPException(status_code=404, detail="Interview not found")
     all_msgs = await db.interview_messages.find({"interview_id": interview_id}, {"_id": 0}).sort("timestamp", 1).to_list(1000)
     proctoring = await db.proctoring_events.find({"interview_id": interview_id}, {"_id": 0}).to_list(100)
-    convo = "\n".join([f"{'Interviewer' if m['role']=='interviewer' else 'Candidate'}: {m['content']}" for m in all_msgs])
+
+    # Group messages by round for accurate per-round evaluation
+    rounds_conducted = set()
+    round_convos = {1: [], 2: [], 3: [], 4: []}
+    for m in all_msgs:
+        rn = m.get("round_number", 1)
+        rounds_conducted.add(rn)
+        role_label = "Interviewer" if m["role"] == "interviewer" else "Candidate"
+        round_convos[rn].append(f"{role_label}: {m['content']}")
+
+    structured_convo = ""
+    round_names = {1: "Introduction & DSA Coding", 2: "Projects & Core Subjects (incl SQL)", 3: "Managerial & System Design", 4: "HR Round"}
+    for rn in sorted(rounds_conducted):
+        structured_convo += f"\n\n===== ROUND {rn}: {round_names.get(rn, f'Round {rn}')} =====\n"
+        structured_convo += "\n".join(round_convos[rn][-30:])  # Last 30 messages per round
+
+    max_round = max(rounds_conducted) if rounds_conducted else 1
+    rounds_info = ", ".join([f"Round {r}" for r in sorted(rounds_conducted)])
+    not_conducted = [r for r in [1,2,3,4] if r not in rounds_conducted]
+    not_conducted_info = f"Rounds NOT conducted: {', '.join([str(r) for r in not_conducted])}" if not_conducted else "All 4 rounds conducted"
+
+    report_system = f"""You are a BRUTALLY HONEST interview evaluator. Evaluate the candidate based on their ACTUAL performance in each round.
+
+CRITICAL RULES:
+- ONLY evaluate rounds that were actually conducted. The conversation below is structured by round.
+- For rounds that were conducted, base your scores and feedback STRICTLY on what the candidate actually said/did in that specific round.
+- If the candidate gave wrong answers in a round, that round score should be LOW (below 40).
+- If a round was NOT conducted, set its score to 0 and feedback to "Round not conducted".
+- Do NOT fabricate or imagine what happened in a round - only evaluate what is in the transcript.
+- Be brutally honest. No participation trophies.
+
+Rounds conducted: {rounds_info}
+{not_conducted_info}
+
+Return ONLY valid JSON:
+{{"overall_score":<1-100>,"rounds":[{{"round":1,"name":"Introduction & DSA Coding","score":<1-100 or 0 if not conducted>,"feedback":"<honest feedback based on actual transcript>"}},{{"round":2,"name":"Projects & Core Subjects","score":<1-100 or 0 if not conducted>,"feedback":"<honest feedback>"}},{{"round":3,"name":"Managerial & System Design","score":<1-100 or 0 if not conducted>,"feedback":"<honest feedback>"}},{{"round":4,"name":"HR Round","score":<1-100 or 0 if not conducted>,"feedback":"<honest feedback>"}}],"strengths":["<s1>","<s2>","<s3>"],"improvements":["<i1>","<i2>","<i3>"],"recommendation":"Strong Hire"|"Hire"|"Lean Hire"|"No Hire","detailed_feedback":"<2 paragraphs of honest assessment>"}}"""
+
     report_chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"rpt_{interview_id}",
-        system_message='You are a BRUTALLY HONEST interview evaluator. Evaluate the candidate based on their ACTUAL performance, not effort. If they struggled, give LOW scores. If they gave wrong answers, reflect that. Do NOT inflate scores to be nice. A candidate who could not solve DSA problems should score below 40 in that round. Return ONLY JSON: {"overall_score":<1-100>,"rounds":[{"round":1,"name":"DSA & Coding","score":<1-100>,"feedback":"<honest text>"},{"round":2,"name":"Projects & Core Subjects","score":<1-100>,"feedback":"<honest text>"},{"round":3,"name":"Managerial & System Design","score":<1-100>,"feedback":"<honest text>"},{"round":4,"name":"HR Round","score":<1-100>,"feedback":"<honest text>"}],"strengths":["<s1>","<s2>","<s3>"],"improvements":["<i1>","<i2>","<i3>"],"recommendation":"Strong Hire"|"Hire"|"Lean Hire"|"No Hire","detailed_feedback":"<2 paragraphs of honest assessment>"}'
+        system_message=report_system
     ).with_model("anthropic", "claude-sonnet-4-5-20250929")
     report_resp = await report_chat.send_message(UserMessage(
-        text=f"Role: {interview.get('role')}\nViolations: {len(proctoring)}\n\n{convo[:8000]}"))
+        text=f"Role: {interview.get('role')}\nProctoring Violations: {len(proctoring)}\nRounds conducted: {rounds_info}\n\n{structured_convo[:10000]}"))
     try:
         rt = report_resp.strip()
         if "```json" in rt: rt = rt.split("```json")[1].split("```")[0].strip()
         elif "```" in rt: rt = rt.split("```")[1].split("```")[0].strip()
         report_data = json.loads(rt)
     except Exception:
-        report_data = {"overall_score": 65, "rounds": [{"round": i+1, "name": ROUND_CONFIG[i]["name"], "score": 65, "feedback": "Pending"} for i in range(4)],
-                       "strengths": ["Good effort"], "improvements": ["More practice"], "recommendation": "Lean Hire", "detailed_feedback": report_resp}
+        report_data = {"overall_score": 50, "rounds": [
+            {"round": i+1, "name": round_names.get(i+1, ROUND_CONFIG[i]["name"]),
+             "score": 50 if (i+1) in rounds_conducted else 0,
+             "feedback": "Evaluation pending" if (i+1) in rounds_conducted else "Round not conducted"}
+            for i in range(4)
+        ], "strengths": ["Attempted the interview"], "improvements": ["Review all topics"], "recommendation": "Lean Hire", "detailed_feedback": report_resp}
     if len(proctoring) > 0:
-        report_data["overall_score"] = max(0, report_data.get("overall_score", 65) - min(len(proctoring) * 5, 30))
+        report_data["overall_score"] = max(0, report_data.get("overall_score", 50) - min(len(proctoring) * 5, 30))
         report_data["proctoring_violations"] = len(proctoring)
     report_id = f"rpt_{uuid.uuid4().hex[:12]}"
     report = {"report_id": report_id, "interview_id": interview_id, "user_id": user["user_id"],
@@ -536,14 +576,67 @@ async def log_proctoring_event(event: ProctoringEvent, request: Request):
     return {"status": "logged"}
 
 # ==================== RESOURCES ====================
+CURATED_RESOURCES = {
+    "operating-systems": [
+        {"title": "Operating Systems: Three Easy Pieces (OSTEP)", "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/", "type": "Book", "desc": "Free comprehensive OS textbook. Gold standard for interview prep."},
+        {"title": "Neso Academy - OS Playlist", "url": "https://www.youtube.com/playlist?list=PLBlnK6fEyqRiVhbXDGLXDk_OQAdc0cPiS", "type": "Video", "desc": "60+ lectures covering all OS concepts with clear explanations."},
+        {"title": "Gate Smashers - OS", "url": "https://www.youtube.com/playlist?list=PLxCzCOWd7aiGz9donHRrE9I3Mwn6XdP8p", "type": "Video", "desc": "Concise OS videos for interview preparation in Hindi/English."},
+        {"title": "GeeksforGeeks - OS", "url": "https://www.geeksforgeeks.org/operating-systems/", "type": "Article", "desc": "Comprehensive OS articles with practice questions."},
+        {"title": "Javatpoint - OS Tutorial", "url": "https://www.javatpoint.com/os-tutorial", "type": "Article", "desc": "Well-structured OS tutorial covering all major topics."},
+    ],
+    "dbms": [
+        {"title": "CMU Database Systems Course", "url": "https://15445.courses.cs.cmu.edu/", "type": "Course", "desc": "Andy Pavlo's legendary database systems course."},
+        {"title": "Database System Concepts (Silberschatz)", "url": "https://www.db-book.com/", "type": "Book", "desc": "The definitive DBMS textbook used worldwide."},
+        {"title": "Neso Academy - DBMS Playlist", "url": "https://www.youtube.com/playlist?list=PLBlnK6fEyqRi_CUQ-FkbJR-n0MsadjKR6", "type": "Video", "desc": "50+ DBMS lectures from fundamentals to advanced."},
+        {"title": "GeeksforGeeks - DBMS", "url": "https://www.geeksforgeeks.org/dbms/", "type": "Article", "desc": "DBMS articles covering normalization, SQL, transactions."},
+        {"title": "SQLBolt - Interactive SQL", "url": "https://sqlbolt.com/", "type": "Interactive", "desc": "Learn SQL with interactive exercises. Perfect for beginners."},
+        {"title": "Mode SQL Tutorial", "url": "https://mode.com/sql-tutorial/", "type": "Tutorial", "desc": "Advanced SQL tutorial with real-world analytical queries."},
+    ],
+    "computer-networks": [
+        {"title": "Computer Networking: A Top-Down Approach", "url": "https://gaia.cs.umass.edu/kurose_ross/online_lectures.htm", "type": "Book+Video", "desc": "Kurose & Ross - the standard CN textbook with free video lectures."},
+        {"title": "Neso Academy - CN Playlist", "url": "https://www.youtube.com/playlist?list=PLBlnK6fEyqRgMCUAG0XRw78UA8qnv6jEx", "type": "Video", "desc": "Comprehensive CN video series covering all layers."},
+        {"title": "Ben Eater - Networking Tutorial", "url": "https://www.youtube.com/playlist?list=PLowKtXNTBypH19whXTVoG3oKSuOsfuKiQ", "type": "Video", "desc": "Hands-on networking from scratch. Deep understanding."},
+        {"title": "GeeksforGeeks - CN", "url": "https://www.geeksforgeeks.org/computer-network-tutorials/", "type": "Article", "desc": "TCP/IP, HTTP, DNS, routing, subnetting articles."},
+        {"title": "Cloudflare Learning Center", "url": "https://www.cloudflare.com/learning/", "type": "Article", "desc": "Practical networking concepts explained beautifully."},
+    ],
+    "system-design": [
+        {"title": "System Design Primer (GitHub)", "url": "https://github.com/donnemartin/system-design-primer", "type": "GitHub", "desc": "180k+ stars. The most comprehensive system design resource."},
+        {"title": "Designing Data-Intensive Applications", "url": "https://dataintensive.net/", "type": "Book", "desc": "Martin Kleppmann's masterpiece. Must-read for senior roles."},
+        {"title": "ByteByteGo - System Design", "url": "https://www.youtube.com/@ByteByteGo", "type": "Video", "desc": "Alex Xu's visual system design explanations."},
+        {"title": "Gaurav Sen - System Design", "url": "https://www.youtube.com/playlist?list=PLMCXHnjXnTnvo6alSjVkgxV-VH6EPyvoX", "type": "Video", "desc": "Popular system design playlist for interview prep."},
+        {"title": "High Scalability Blog", "url": "http://highscalability.com/", "type": "Blog", "desc": "Real-world architecture case studies from top companies."},
+        {"title": "System Design Interview (Alex Xu)", "url": "https://www.amazon.com/System-Design-Interview-insiders-Second/dp/B08CMF2CQF", "type": "Book", "desc": "Step-by-step guide to cracking system design interviews."},
+    ],
+    "oops": [
+        {"title": "Head First Design Patterns", "url": "https://www.oreilly.com/library/view/head-first-design/0596007124/", "type": "Book", "desc": "Best book for learning design patterns with clear examples."},
+        {"title": "Refactoring Guru - Design Patterns", "url": "https://refactoring.guru/design-patterns", "type": "Interactive", "desc": "Beautiful visual explanations of all 23 GoF patterns."},
+        {"title": "Derek Banas - Design Patterns", "url": "https://www.youtube.com/playlist?list=PLF206E906175C7E07", "type": "Video", "desc": "Quick, practical design pattern tutorials."},
+        {"title": "GeeksforGeeks - OOP Concepts", "url": "https://www.geeksforgeeks.org/object-oriented-programming-oops-concept-in-java/", "type": "Article", "desc": "OOP fundamentals with Java/C++ examples."},
+        {"title": "SOLID Principles Guide", "url": "https://www.digitalocean.com/community/conceptual-articles/s-o-l-i-d-the-first-five-principles-of-object-oriented-design", "type": "Article", "desc": "Clear SOLID principles guide with real examples."},
+    ],
+    "sql-practice": [
+        {"title": "LeetCode SQL Problems", "url": "https://leetcode.com/problemset/database/", "type": "Practice", "desc": "200+ SQL problems sorted by difficulty. Industry standard."},
+        {"title": "HackerRank SQL", "url": "https://www.hackerrank.com/domains/sql", "type": "Practice", "desc": "SQL challenges from basic to advanced with instant feedback."},
+        {"title": "W3Schools SQL Tutorial", "url": "https://www.w3schools.com/sql/", "type": "Tutorial", "desc": "Interactive SQL tutorial with try-it-yourself editor."},
+        {"title": "SQLZoo", "url": "https://sqlzoo.net/", "type": "Interactive", "desc": "Interactive SQL tutorials with progressive difficulty."},
+        {"title": "Use The Index, Luke", "url": "https://use-the-index-luke.com/", "type": "Book", "desc": "Free guide to database indexing and SQL performance."},
+        {"title": "StrataScratch", "url": "https://www.stratascratch.com/", "type": "Practice", "desc": "Real SQL interview questions from FAANG companies."},
+    ],
+}
+
 @api_router.get("/resources")
 async def list_resources():
-    return {"resources": await db.resources.find({}, {"_id": 0}).to_list(100)}
+    resources = await db.resources.find({}, {"_id": 0}).to_list(100)
+    for r in resources:
+        slug = r.get("subject_slug", "")
+        r["best_resources"] = CURATED_RESOURCES.get(slug, [])
+    return {"resources": resources}
 
 @api_router.get("/resources/{subject_slug}")
 async def get_resource(subject_slug: str):
     resource = await db.resources.find_one({"subject_slug": subject_slug}, {"_id": 0})
     if not resource: raise HTTPException(status_code=404, detail="Resource not found")
+    resource["best_resources"] = CURATED_RESOURCES.get(subject_slug, [])
     return resource
 
 # ==================== DSA CHATBOT ====================

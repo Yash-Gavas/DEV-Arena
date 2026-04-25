@@ -2,6 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Swords, BrainCircuit, Code2, Shield, BarChart3, BookOpen, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { ThreeBackground } from '../components/ThreeBackground';
 
 const features = [
   { icon: BrainCircuit, title: 'AI Interviewer', desc: 'Real interview experience with an AI that asks DSA, projects, core CS, and system design questions across 4 rounds.' },
@@ -30,12 +31,8 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img
-            src="https://static.prod-images.emergentagent.com/jobs/808f257a-41bf-4244-a650-c63e9d50cfe0/images/ad7b2e61289a1f3e868b3f78fe20c6c46b346ea94d5f35c2b2f69c0b7bd404d3.png"
-            alt="" className="w-full h-full object-cover opacity-40"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-transparent" />
-          <div className="absolute inset-0 grid-overlay" />
+          <ThreeBackground variant="particles" opacity={0.7} />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 sm:px-10 lg:px-16 py-20">
@@ -74,7 +71,8 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="py-20 px-6 sm:px-10 lg:px-16 max-w-7xl mx-auto">
+      <section className="relative py-20 px-6 sm:px-10 lg:px-16 max-w-7xl mx-auto overflow-hidden">
+        <ThreeBackground variant="nodes" opacity={0.25} />
         <div className="mb-12">
           <span className="text-xs tracking-[0.2em] uppercase font-bold text-blue-500">Features</span>
           <h2 className="text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold font-['Chivo'] mt-2">Everything you need to crack interviews</h2>

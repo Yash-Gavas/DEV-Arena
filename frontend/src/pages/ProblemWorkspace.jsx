@@ -50,6 +50,69 @@ const diffColors = {
   Hard: 'bg-red-600/20 text-red-400 border-red-500/30',
 };
 
+const COMPLEXITIES = [
+  { label: 'O(1)', value: 1, color: '#22C55E' },
+  { label: 'O(log n)', value: 8, color: '#3B82F6' },
+  { label: 'O(n)', value: 20, color: '#06B6D4' },
+  { label: 'O(n log n)', value: 35, color: '#A855F7' },
+  { label: 'O(n\u00B2)', value: 60, color: '#F59E0B' },
+  { label: 'O(2\u207F)', value: 85, color: '#EF4444' },
+  { label: 'O(n!)', value: 100, color: '#DC2626' },
+];
+
+function matchComplexity(str) {
+  if (!str) return -1;
+  const s = str.toLowerCase().replace(/\s/g, '');
+  if (s.includes('o(1)') || s.includes('constant')) return 0;
+  if (s.includes('o(logn)') || s.includes('o(log(n))') || s.includes('logarithmic')) return 1;
+  if (s.includes('o(nlogn)') || s.includes('o(n*logn)') || s.includes('o(nlog(n))')) return 3;
+  if (s.includes('o(n)') || s === 'linear' || s.includes('o(m+n)') || s.includes('o(n+m)')) return 2;
+  if (s.includes('o(n^2)') || s.includes('o(n²)') || s.includes('quadratic') || s.includes('o(m*n)') || s.includes('o(mn)')) return 4;
+  if (s.includes('o(2^n)') || s.includes('o(2ⁿ)') || s.includes('exponential')) return 5;
+  if (s.includes('o(n!)') || s.includes('factorial')) return 6;
+  return -1;
+}
+
+function ComplexityGraph({ currentComplexity }) {
+  const matchIdx = matchComplexity(currentComplexity);
+  return (
+    <div className="bg-[#111] rounded-md p-3 border border-white/5" data-testid="complexity-graph">
+      <p className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider mb-2.5">Time Complexity Comparison</p>
+      <div className="space-y-1.5">
+        {COMPLEXITIES.map((c, i) => {
+          const isMatch = i === matchIdx;
+          return (
+            <div key={c.label} className="flex items-center gap-2">
+              <span className={`text-[10px] font-mono w-[70px] text-right ${isMatch ? 'text-white font-bold' : 'text-zinc-500'}`}>
+                {c.label}
+              </span>
+              <div className="flex-1 h-4 bg-black/50 rounded overflow-hidden relative">
+                <div
+                  className={`h-full rounded transition-all duration-700 ${isMatch ? 'opacity-100' : 'opacity-30'}`}
+                  style={{ width: `${c.value}%`, backgroundColor: c.color }}
+                />
+                {isMatch && (
+                  <div className="absolute inset-0 flex items-center justify-end pr-1.5">
+                    <span className="text-[8px] font-bold text-white drop-shadow-lg">YOUR SOLUTION</span>
+                  </div>
+                )}
+              </div>
+              <span className={`text-[9px] w-[50px] ${
+                isMatch ? 'text-white font-bold' : i <= 2 ? 'text-emerald-500' : i <= 3 ? 'text-amber-500' : 'text-red-500'
+              }`}>
+                {i === 0 ? 'Best' : i <= 2 ? 'Good' : i === 3 ? 'Fair' : 'Slow'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {matchIdx === -1 && currentComplexity && (
+        <p className="text-[9px] text-zinc-500 mt-2 italic">Complexity "{currentComplexity}" shown above in badges</p>
+      )}
+    </div>
+  );
+}
+
 export default function ProblemWorkspace() {
   const { problemId } = useParams();
   const navigate = useNavigate();
@@ -314,17 +377,21 @@ export default function ProblemWorkspace() {
 
                 {/* Complexity */}
                 {(desc?.time_complexity || desc?.space_complexity) && (
-                  <div className="flex gap-3 mb-4">
-                    {desc.time_complexity && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 bg-[#111] px-2.5 py-1.5 rounded border border-white/5">
-                        <Clock className="w-3 h-3 text-blue-400" /> Time: <span className="text-white font-mono">{desc.time_complexity}</span>
-                      </div>
-                    )}
-                    {desc.space_complexity && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 bg-[#111] px-2.5 py-1.5 rounded border border-white/5">
-                        <Zap className="w-3 h-3 text-amber-400" /> Space: <span className="text-white font-mono">{desc.space_complexity}</span>
-                      </div>
-                    )}
+                  <div className="mb-4">
+                    <div className="flex gap-3 mb-3">
+                      {desc.time_complexity && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 bg-[#111] px-2.5 py-1.5 rounded border border-white/5">
+                          <Clock className="w-3 h-3 text-blue-400" /> Time: <span className="text-white font-mono">{desc.time_complexity}</span>
+                        </div>
+                      )}
+                      {desc.space_complexity && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 bg-[#111] px-2.5 py-1.5 rounded border border-white/5">
+                          <Zap className="w-3 h-3 text-amber-400" /> Space: <span className="text-white font-mono">{desc.space_complexity}</span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Time Complexity Comparison Graph */}
+                    {desc.time_complexity && <ComplexityGraph currentComplexity={desc.time_complexity} />}
                   </div>
                 )}
 
