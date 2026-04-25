@@ -399,6 +399,128 @@ async def update_profile(data: ProfileUpdate, request: Request):
     if update: await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
     return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
 
+# ==================== BADGES & RANKING ====================
+RANK_THRESHOLDS = [
+    (0, "Novice", "#6B7280"),
+    (100, "Apprentice", "#22C55E"),
+    (500, "Warrior", "#3B82F6"),
+    (1500, "Expert", "#A855F7"),
+    (5000, "Master", "#F59E0B"),
+    (15000, "Grandmaster", "#EF4444"),
+]
+
+BADGE_DEFS = [
+    {"id": "first_blood", "name": "First Blood", "desc": "Complete your first interview", "icon": "zap", "color": "#EF4444"},
+    {"id": "problem_solver_10", "name": "Problem Solver", "desc": "Solve 10 DSA problems", "icon": "code", "color": "#22C55E"},
+    {"id": "century_100", "name": "Century", "desc": "Solve 100 DSA problems", "icon": "award", "color": "#F59E0B"},
+    {"id": "marathon_5", "name": "Marathon Runner", "desc": "Complete 5 interviews", "icon": "brain", "color": "#3B82F6"},
+    {"id": "perfectionist", "name": "Perfectionist", "desc": "Score 90+ on an interview", "icon": "star", "color": "#A855F7"},
+    {"id": "community_star", "name": "Community Star", "desc": "Create 5 community posts", "icon": "users", "color": "#06B6D4"},
+    {"id": "streak_7", "name": "Streak Master", "desc": "7-day activity streak", "icon": "flame", "color": "#F97316"},
+    {"id": "diverse_solver", "name": "DSA Explorer", "desc": "Solve problems from 5+ topics", "icon": "compass", "color": "#EC4899"},
+    {"id": "sql_ace", "name": "SQL Ace", "desc": "Execute 20 successful SQL queries", "icon": "database", "color": "#14B8A6"},
+    {"id": "interviewer_10", "name": "Interview Veteran", "desc": "Complete 10 interviews", "icon": "shield", "color": "#8B5CF6"},
+]
+
+def get_rank(xp):
+    rank_name, rank_color = "Novice", "#6B7280"
+    for threshold, name, color in RANK_THRESHOLDS:
+        if xp >= threshold:
+            rank_name, rank_color = name, color
+    next_rank = None
+    for threshold, name, _ in RANK_THRESHOLDS:
+        if xp < threshold:
+            next_rank = {"name": name, "xp_needed": threshold}
+            break
+    return {"name": rank_name, "color": rank_color, "next": next_rank}
+
+@api_router.get("/profile/stats")
+async def get_profile_stats(request: Request):
+    user = await get_current_user(request)
+    uid = user["user_id"]
+
+    # Count submissions
+    total_solved = await db.submissions.count_documents({"user_id": uid, "result.passed": True})
+    total_interviews = await db.interviews.count_documents({"user_id": uid, "status": "completed"})
+    total_posts = await db.community_posts.count_documents({"user_id": uid})
+
+    # Get distinct topics solved
+    solved_subs = await db.submissions.find({"user_id": uid, "result.passed": True}, {"_id": 0, "problem_id": 1}).to_list(1000)
+    solved_pids = list(set(s["problem_id"] for s in solved_subs))
+    topics_solved = set()
+    if solved_pids:
+        probs = await db.dsa_problems.find({"problem_id": {"$in": solved_pids}}, {"_id": 0, "topic": 1}).to_list(1000)
+        topics_solved = set(p.get("topic", "") for p in probs if p.get("topic"))
+
+    # SQL query count
+    sql_count = await db.submissions.count_documents({"user_id": uid, "language": "sql"})
+
+    # Max interview score
+    reports = await db.reports.find({"user_id": uid}, {"_id": 0, "overall_score": 1}).to_list(100)
+    max_score = max((r.get("overall_score", 0) for r in reports), default=0)
+
+    # Activity streak (check consecutive days with any activity)
+    all_timestamps = []
+    subs = await db.submissions.find({"user_id": uid}, {"_id": 0, "timestamp": 1}).to_list(5000)
+    all_timestamps.extend([s["timestamp"] for s in subs if s.get("timestamp")])
+    msgs = await db.interview_messages.find({"interview_id": {"$regex": "^int_"}, "role": "candidate"}, {"_id": 0, "timestamp": 1}).to_list(5000)
+    all_timestamps.extend([m["timestamp"] for m in msgs if m.get("timestamp")])
+    posts = await db.community_posts.find({"user_id": uid}, {"_id": 0, "created_at": 1}).to_list(1000)
+    all_timestamps.extend([p["created_at"] for p in posts if p.get("created_at")])
+
+    active_days = set()
+    for ts in all_timestamps:
+        try:
+            d = datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
+            active_days.add(d.date())
+        except Exception:
+            pass
+
+    streak = 0
+    if active_days:
+        today = datetime.now(timezone.utc).date()
+        check = today
+        while check in active_days:
+            streak += 1
+            check -= timedelta(days=1)
+
+    # Calculate XP
+    xp = total_interviews * 100 + total_solved * 20 + total_posts * 5 + streak * 10
+
+    # Determine earned badges
+    earned = []
+    if total_interviews >= 1: earned.append("first_blood")
+    if total_solved >= 10: earned.append("problem_solver_10")
+    if total_solved >= 100: earned.append("century_100")
+    if total_interviews >= 5: earned.append("marathon_5")
+    if max_score >= 90: earned.append("perfectionist")
+    if total_posts >= 5: earned.append("community_star")
+    if streak >= 7: earned.append("streak_7")
+    if len(topics_solved) >= 5: earned.append("diverse_solver")
+    if sql_count >= 20: earned.append("sql_ace")
+    if total_interviews >= 10: earned.append("interviewer_10")
+
+    rank = get_rank(xp)
+    badges = [
+        {**b, "earned": b["id"] in earned}
+        for b in BADGE_DEFS
+    ]
+
+    return {
+        "xp": xp,
+        "rank": rank,
+        "streak": streak,
+        "badges": badges,
+        "stats": {
+            "problems_solved": total_solved,
+            "interviews_completed": total_interviews,
+            "community_posts": total_posts,
+            "topics_covered": len(topics_solved),
+            "max_interview_score": max_score,
+            "sql_queries": sql_count,
+        }
+    }
+
 # ==================== PROCTORING ====================
 @api_router.post("/proctoring/event")
 async def log_proctoring_event(event: ProctoringEvent, request: Request):

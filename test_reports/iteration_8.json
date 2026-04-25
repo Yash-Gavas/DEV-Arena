@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 8 verified: (1) GET /api/profile/stats returns correct xp/rank/streak/badges/stats payload (10 badges, all required fields, rank=Apprentice for 160 XP); (2) Profile page renders rank card with XP progress bar, rank-name='Apprentice', xp-display='160 XP', and 10-badge grid with community_star marked earned; (3) Dashboard shows rank-badge ('Apprentice 160 XP'), stat-xp=160, stat-streak=1d, and earned-badge-community_star in preview; (4) 3D Visualizer renders all 5 DS types (array, linkedlist, binarytree, stack, graph) with custom data input - tested 5,3,8,1,9,2 / 10->20->30->40 / 1,2,3,4,5,6,7 / 1,2,3,4 / 0-1,1-2,2-3,3-0,1-3 - graph rendered with 4 nodes + directional arrows visible in screenshot; (5) XP formula validated: interviews*100 + solved*20 + posts*5 + streak*10.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8.py",
+    "/app/test_reports/pytest/pytest_iter8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 1040 lines - approaching unmanageable. Strong recommendation to split into modules (auth, problems, interviews, community, profile/badges, sql, visualize) per >700-line guideline.",
+    "BADGE_DEFS and RANK_THRESHOLDS are hardcoded constants alongside route handlers; consider moving to a separate badges.py module for cleaner organization and easier badge-rule changes.",
+    "Profile.jsx xpProgress calculation (line 82) hardcodes the rank thresholds inline (0/100/500/1500/5000) - duplicates backend RANK_THRESHOLDS. Should compute from rank.next.xp_needed and previous threshold returned from backend, or expose a 'previous_threshold' field in the rank object to avoid drift.",
+    "DSAVisualizer.jsx uses deprecated THREE.Clock (console warning observed). Migrate to THREE.Timer per Three.js r158+ guidance.",
+    "/api/profile/stats: streak query iterates ALL submissions (5000 limit) and ALL interview messages globally (note: interview_messages query has no user_id filter - it scans all messages with role='candidate' across the platform, then never filters by uid). server.py:466 - this is a correctness bug for streak (other users' message timestamps inflate streak). LOW impact today (single test user) but will inflate streaks in production.",
+    "/api/profile/stats has no pagination/limits documented and may be slow for power users (5000 sub limit, 5000 msg limit, 1000 post limit reads on every call). Consider pre-aggregating in a stats collection updated on write."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8.py"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 pytest cases passed)",
+    "frontend": "100% (Dashboard, Profile, Visualizer all verified end-to-end)"
+  },
+  "test_credentials": {
+    "session_token": "test_session_dev_arena_2026",
+    "user_id": "test-user-dev-arena",
+    "email": "testuser@devarena.com"
+  },
+  "seed_data_creation": "None. Tests are read-only against the existing test user state (160 XP, 5 problems solved, ~10 community posts, 0 interviews completed, 1d streak, community_star earned).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 8 features fully verified. Backend tests in /app/backend/tests/test_iteration8.py (10 tests, all pass): TestProfileStats (auth, payload, rank object, 10 badges with correct ids, stats fields, expected Apprentice/community_star state), TestRankLogic (XP formula consistency), TestCustomVisualize (auth), TestRegression (profile, community delete 404). Frontend Playwright run confirmed: Dashboard data-testids: dashboard, rank-badge, stat-xp, stat-streak, badges-preview, earned-badge-community_star. Profile data-testids: profile-page, rank-card, rank-name, xp-display, xp-progress-bar, badges-card, badge-{id} (10 total). Visualizer data-testids: dsa-visualizer, ds-{array|linkedlist|binarytree|stack|graph}, data-input, apply-input-btn, three-canvas. Note: there is a latent streak-calculation bug in /api/profile/stats where interview_messages are queried WITHOUT user_id filter (server.py line 466) - currently invisible because test user dominates the data. Flagged in code review for main agent.",
+  "rca_of_the_issue": "No bugs found in P2/P3 features. Latent issue in streak calc: server.py:466 db.interview_messages.find({'interview_id': {'$regex': '^int_'}, 'role': 'candidate'}) is missing user_id filter; should be {'user_id': uid, 'role': 'candidate'}. Reproduce by creating a 2nd user and adding candidate messages on different days - target user's streak will jump. Fix: add 'user_id': uid to the query."
+}
