@@ -803,6 +803,72 @@ Return ONLY valid JSON (no markdown):
         await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"problems_solved": 1}})
     return result
 
+@api_router.get("/submissions/solved-ids")
+async def get_solved_problem_ids(request: Request):
+    user = await get_current_user(request)
+    subs = await db.submissions.find(
+        {"user_id": user["user_id"], "result.passed": True},
+        {"_id": 0, "problem_id": 1}
+    ).to_list(5000)
+    solved_ids = list(set(s["problem_id"] for s in subs))
+    return {"solved_ids": solved_ids}
+
+@api_router.get("/submissions/{problem_id}")
+async def get_submissions(problem_id: str, request: Request):
+    user = await get_current_user(request)
+    subs = await db.submissions.find(
+        {"user_id": user["user_id"], "problem_id": problem_id},
+        {"_id": 0}
+    ).sort("timestamp", -1).to_list(50)
+    return {"submissions": subs}
+
+@api_router.get("/submissions/{problem_id}/latest")
+async def get_latest_submission(problem_id: str, request: Request):
+    user = await get_current_user(request)
+    sub = await db.submissions.find_one(
+        {"user_id": user["user_id"], "problem_id": problem_id},
+        {"_id": 0},
+        sort=[("timestamp", -1)]
+    )
+    if not sub:
+        return {"submission": None}
+    return {"submission": sub}
+
+@api_router.post("/code/save")
+async def save_code(data: CodeSubmission, request: Request):
+    """Save code draft without evaluation"""
+    user = await get_current_user(request)
+    await db.code_drafts.update_one(
+        {"user_id": user["user_id"], "problem_id": data.problem_id},
+        {"$set": {
+            "user_id": user["user_id"],
+            "problem_id": data.problem_id,
+            "code": data.code,
+            "language": data.language,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    return {"saved": True}
+
+@api_router.get("/code/draft/{problem_id}")
+async def get_code_draft(problem_id: str, request: Request):
+    """Get saved code draft for a problem"""
+    user = await get_current_user(request)
+    draft = await db.code_drafts.find_one(
+        {"user_id": user["user_id"], "problem_id": problem_id},
+        {"_id": 0}
+    )
+    if not draft:
+        # Fall back to latest submission
+        sub = await db.submissions.find_one(
+            {"user_id": user["user_id"], "problem_id": problem_id},
+            {"_id": 0, "code": 1, "language": 1},
+            sort=[("timestamp", -1)]
+        )
+        return {"draft": sub}
+    return {"draft": draft}
+
 # ==================== SQL PLAYGROUND ====================
 def get_sql_db():
     """Create in-memory SQLite with sample data for SQL practice"""

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Search, ChevronLeft, ChevronRight, Code2 } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Code2, CheckCircle } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -23,10 +23,15 @@ export default function DSAProblems() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [solvedSet, setSolvedSet] = useState(new Set());
   const navigate = useNavigate();
 
   useEffect(() => {
     axios.get(`${API}/problems/meta`, { withCredentials: true }).then(r => setMeta(r.data)).catch(() => {});
+    // Load user's solved problems
+    axios.get(`${API}/submissions/solved-ids`, { withCredentials: true })
+      .then(r => setSolvedSet(new Set(r.data.solved_ids || [])))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -140,6 +145,7 @@ export default function DSAProblems() {
                 <table className="w-full text-sm" data-testid="problems-table">
                   <thead>
                     <tr className="border-b border-white/10 text-xs text-zinc-500 uppercase tracking-wider">
+                      <th className="text-left p-3 w-8"></th>
                       <th className="text-left p-3 w-12">#</th>
                       <th className="text-left p-3">Title</th>
                       <th className="text-left p-3 hidden sm:table-cell">Topic</th>
@@ -156,6 +162,11 @@ export default function DSAProblems() {
                         data-testid={`problem-row-${p.problem_id}`}
                         className="border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors"
                       >
+                        <td className="p-3">
+                          {solvedSet.has(p.problem_id) && (
+                            <CheckCircle className="w-4 h-4 text-emerald-400" data-testid={`solved-${p.problem_id}`} />
+                          )}
+                        </td>
                         <td className="p-3 text-zinc-500 font-mono text-xs">{(page - 1) * 50 + i + 1}</td>
                         <td className="p-3 font-medium text-white">{p.title}</td>
                         <td className="p-3 hidden sm:table-cell">

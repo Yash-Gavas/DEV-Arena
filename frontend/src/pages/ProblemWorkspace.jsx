@@ -253,6 +253,22 @@ export default function ProblemWorkspace() {
       .catch(() => navigate('/problems'));
   }, [problemId, navigate]);
 
+  // Load saved code (draft or latest submission)
+  useEffect(() => {
+    if (!problemId) return;
+    axios.get(`${API}/code/draft/${problemId}`, { withCredentials: true })
+      .then(r => {
+        const draft = r.data.draft;
+        if (draft?.code) {
+          setCode(draft.code);
+          if (draft.language) {
+            setLanguage(draft.language);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [problemId]);
+
   // Load enhanced description
   useEffect(() => {
     if (!problemId) return;
@@ -288,8 +304,22 @@ export default function ProblemWorkspace() {
     if (leftTab === 'visualizer' || leftTab === 'debugger') loadVisualizer();
   }, [leftTab, loadVisualizer]);
 
+  // Auto-save code draft (debounced - saves 2s after last edit)
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!problemId || !code) return;
+    const template = LANGUAGES.find(l => l.value === language)?.template || '';
+    if (code === template) return; // Don't save default templates
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      axios.post(`${API}/code/save`, { problem_id: problemId, code, language }, { withCredentials: true }).catch(() => {});
+    }, 2000);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [code, language, problemId]);
+
   const changeLanguage = useCallback((val) => {
     setLanguage(val);
+    // Only reset to template if no saved code for this language exists
     const lang = LANGUAGES.find(l => l.value === val);
     setCode(lang?.template || '');
     setResult(null);
