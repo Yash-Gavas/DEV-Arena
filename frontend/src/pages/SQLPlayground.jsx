@@ -20,6 +20,8 @@ const CATEGORIES = ['all','Basic SELECT','WHERE Clause','Aggregate Functions','G
 
 export default function SQLPlayground() {
   const [query, setQuery] = useState('SELECT * FROM employees LIMIT 10;');
+  const [customSchema, setCustomSchema] = useState('');
+  const [showCustomSchema, setShowCustomSchema] = useState(false);
   const [result, setResult] = useState(null);
   const [schema, setSchema] = useState([]);
   const [problems, setProblems] = useState([]);
@@ -59,7 +61,10 @@ export default function SQLPlayground() {
     setRunning(true);
     setResult(null);
     try {
-      const res = await axios.post(`${API}/sql/execute`, { query }, { withCredentials: true });
+      const res = await axios.post(`${API}/sql/execute`, {
+        query,
+        custom_schema: showCustomSchema ? customSchema : ''
+      }, { withCredentials: true });
       setResult(res.data);
     } catch (err) {
       setResult({ error: err.response?.data?.detail || 'Execution failed', columns: [], rows: [], row_count: 0 });
@@ -147,6 +152,39 @@ export default function SQLPlayground() {
 
               {/* Editor + Results */}
               <div className="lg:col-span-6 space-y-4">
+                {/* Custom Schema Toggle */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCustomSchema(!showCustomSchema)}
+                    data-testid="toggle-custom-schema"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      showCustomSchema ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30' : 'bg-[#141414] text-zinc-400 border border-white/10 hover:border-white/20'
+                    }`}>
+                    <Database className="w-3.5 h-3.5" /> {showCustomSchema ? 'Custom Schema ON' : 'Add Custom Schema'}
+                  </button>
+                  {showCustomSchema && (
+                    <span className="text-[10px] text-zinc-500">Define your own tables below — they run alongside built-in tables</span>
+                  )}
+                </div>
+
+                {/* Custom Schema Editor */}
+                {showCustomSchema && (
+                  <Card className="bg-[#141414] border-cyan-500/20">
+                    <CardContent className="p-0">
+                      <div className="px-3 py-1.5 border-b border-white/10 flex items-center justify-between">
+                        <p className="text-[10px] text-cyan-400 font-semibold uppercase tracking-wider">Custom Schema (CREATE TABLE + INSERT)</p>
+                        <button onClick={() => setCustomSchema(`CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, grade TEXT, score REAL);\nINSERT INTO students VALUES (1, 'Alice', 'A', 95.5);\nINSERT INTO students VALUES (2, 'Bob', 'B', 82.0);\nINSERT INTO students VALUES (3, 'Carol', 'A', 91.3);\nINSERT INTO students VALUES (4, 'Dave', 'C', 71.2);`)}
+                          className="text-[9px] text-zinc-500 hover:text-cyan-400 transition-colors">Load Example</button>
+                      </div>
+                      <div className="h-[120px]">
+                        <Editor height="100%" language="sql" value={customSchema} onChange={v => setCustomSchema(v || '')} theme="vs-dark"
+                          options={{ minimap: { enabled: false }, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", padding: { top: 8 }, scrollBeyondLastLine: false, lineNumbers: 'off' }} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Query Editor */}
                 <Card className="bg-[#141414] border-white/10">
                   <CardContent className="p-0">
                     <div className="h-[200px] border-b border-white/10">
@@ -154,7 +192,7 @@ export default function SQLPlayground() {
                         options={{ minimap: { enabled: false }, fontSize: 14, fontFamily: "'JetBrains Mono', monospace", padding: { top: 12 }, scrollBeyondLastLine: false }} />
                     </div>
                     <div className="p-3 flex items-center justify-between">
-                      <p className="text-xs text-zinc-500">SELECT queries only</p>
+                      <p className="text-xs text-zinc-500">{showCustomSchema ? 'Custom schema + built-in tables' : 'Built-in tables: employees, departments, orders, logs'}</p>
                       <Button data-testid="run-sql-btn" onClick={runQuery} disabled={running} className="bg-cyan-600 hover:bg-cyan-500 text-white h-8 text-xs px-4">
                         {running ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Play className="w-3 h-3 mr-1.5" />} Run Query
                       </Button>

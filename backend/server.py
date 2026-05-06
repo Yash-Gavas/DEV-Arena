@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Query, UploadFile, File, Form
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+import PyPDF2, io
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -26,6 +27,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 class InterviewCreate(BaseModel):
     role: str
     jd: Optional[str] = ""
+    pdf_context: Optional[str] = ""
+    restrict_to_pdf: Optional[bool] = False
 
 class MessageCreate(BaseModel):
     content: str
@@ -53,6 +56,7 @@ class CodeSubmission(BaseModel):
 class SQLSubmission(BaseModel):
     sql_id: Optional[str] = ""
     query: str
+    custom_schema: Optional[str] = ""
 
 class CommunityPost(BaseModel):
     type: str  # "experience" or "review"
@@ -180,6 +184,25 @@ async def get_problem(problem_id: str):
         raise HTTPException(status_code=404, detail="Problem not found")
     return problem
 
+# ==================== PDF UPLOAD ====================
+@api_router.post("/upload/pdf")
+async def upload_pdf(request: Request, file: UploadFile = File(...)):
+    await get_current_user(request)
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(content))
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() or ""
+        text = text[:50000]  # Limit to 50k chars
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {str(e)}")
+    return {"text": text, "pages": len(reader.pages), "filename": file.filename}
+
 # ==================== AI INTERVIEW ====================
 ROUND_CONFIG = [
     {"round": 1, "name": "Introduction & DSA", "desc": "Self-introduction followed by Data Structures and Algorithms coding questions"},
@@ -211,6 +234,18 @@ def build_system_prompt(interview, messages, round_num):
     rc = ROUND_CONFIG[round_num - 1]
     prev_qs = [m["content"][:150] for m in messages if m["role"] == "interviewer"]
     history = "\n".join([f"{'Interviewer' if m['role']=='interviewer' else 'Candidate'}: {m['content']}" for m in messages[-16:]])
+
+    pdf_restriction = ""
+    if interview.get("restrict_to_pdf") and interview.get("pdf_context"):
+        pdf_restriction = f"""
+
+CRITICAL RESTRICTION: The candidate has uploaded reference material. ALL your technical questions MUST be based ONLY on the content below. Do NOT ask questions outside this material. Frame questions from concepts, topics, and examples found in this document.
+
+=== UPLOADED REFERENCE MATERIAL ===
+{interview.get('pdf_context', '')[:8000]}
+=== END OF REFERENCE MATERIAL ===
+"""
+
     return f"""You are Alex Chen, a Senior Technical Interviewer at a top tech company conducting a live, realistic interview.
 
 Personality: Professional but BRUTALLY HONEST. You are NOT a cheerleader. You give direct, candid, sometimes harsh feedback — exactly like a real FAANG interviewer.
@@ -232,7 +267,7 @@ Interview Context:
 - Role: {interview.get('role', 'Software Engineer')}
 - JD: {interview.get('jd', 'General SWE')[:500]}
 - Round {round_num}: {rc['name']} - {rc['desc']}
-
+{pdf_restriction}
 Previously asked (DO NOT repeat):
 {chr(10).join(f'- {q}' for q in prev_qs[-10:]) if prev_qs else 'None yet.'}
 
@@ -251,7 +286,9 @@ async def start_interview(data: InterviewCreate, request: Request):
         "interview_id": interview_id, "user_id": user["user_id"],
         "role": data.role, "jd": data.jd or "", "current_round": 1,
         "status": "active", "created_at": datetime.now(timezone.utc).isoformat(),
-        "completed_at": None, "report_id": None
+        "completed_at": None, "report_id": None,
+        "pdf_context": data.pdf_context or "",
+        "restrict_to_pdf": data.restrict_to_pdf or False
     }
     await db.interviews.insert_one(interview)
     prev_interviews = await db.interview_messages.find(
@@ -920,18 +957,28 @@ def get_sql_db():
 @api_router.post("/sql/execute")
 async def execute_sql(data: SQLSubmission, request: Request):
     await get_current_user(request)
-    # Sanitize - only allow SELECT
     query = data.query.strip()
-    if not query.upper().startswith("SELECT"):
-        raise HTTPException(status_code=400, detail="Only SELECT queries are allowed in the playground")
-    # Block dangerous patterns
-    dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "EXEC", "UNION.*DROP"]
+    custom_schema = (data.custom_schema or "").strip()
+
+    # Block truly dangerous patterns
+    dangerous = ["DROP DATABASE", "EXEC(", "xp_", "sp_"]
     for d in dangerous:
-        if re.search(d, query, re.IGNORECASE):
-            raise HTTPException(status_code=400, detail=f"Query contains forbidden keyword: {d}")
+        if d.lower() in query.lower() or d.lower() in custom_schema.lower():
+            raise HTTPException(status_code=400, detail=f"Query contains forbidden pattern: {d}")
+
     try:
         conn = get_sql_db()
         cur = conn.cursor()
+
+        # Apply custom schema if provided (CREATE TABLE, INSERT)
+        if custom_schema:
+            try:
+                cur.executescript(custom_schema)
+            except Exception as schema_err:
+                conn.close()
+                return {"error": f"Schema error: {str(schema_err)}", "columns": [], "rows": [], "row_count": 0}
+
+        # Execute the main query
         cur.execute(query)
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall()

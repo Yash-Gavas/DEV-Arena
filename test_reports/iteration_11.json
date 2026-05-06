@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 11 verified end-to-end. Backend (15/15 pytest pass): (1) POST /api/sql/execute with no custom_schema runs SELECTs against built-in employees/departments/orders/logs (Grace Lee top engineer 110000, employees count=15). (2) POST /api/sql/execute with custom_schema executes CREATE TABLE+INSERT then runs SELECT on the new table; products GROUP BY returns Electronics(1)/Stationery(2). (3) Custom schema runs ALONGSIDE built-in tables (custom xyz + employees count=15 in same call). (4) Bad custom_schema returns {error:'Schema error: ...'} payload (200, not 500). (5) DROP DATABASE blocked with 400. (6) /api/sql/execute requires auth (401). (7) POST /api/upload/pdf accepts a real fpdf2-generated PDF and returns {text, pages>=1, filename}. (8) Non-PDF (text/plain) rejected with 400 'Only PDF files are allowed'. (9) /api/upload/pdf requires auth (401). (10) POST /api/interviews/start accepts pdf_context+restrict_to_pdf and persists them on the interview document. (11-14) POST /api/code/save upserts a draft, GET /api/code/draft/{problem_id} returns it (TEST_DRAFT_v2 verified), GET on missing returns {draft:null}, GET /api/submissions/solved-ids returns {solved_ids:[...]}. (15) /api/code/save requires auth. Frontend: SQL Lab (/sql) shows [data-testid=toggle-custom-schema] reading 'Add Custom Schema'; click flips to 'Custom Schema ON' with cyan background and reveals a second Monaco editor (CUSTOM SCHEMA (CREATE TABLE + INSERT)) with Load Example button; toggling OFF removes the schema editor (monaco count 2->1). Run footer text correctly says 'Custom schema + built-in tables' when ON. Interview setup (/interview) shows 'ATTACH REFERENCE MATERIAL (OPTIONAL)' card with [data-testid=pdf-upload-area]; uploading a real PDF via [data-testid=pdf-file-input] succeeds — filename and 'chars extracted' indicator render and [data-testid=restrict-to-pdf-toggle] checkbox appears.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/sql/execute", "issue": "On valid syntax-error in user's main query, response returns 200 with {error: ...}; on schema error also 200. Inconsistent with HTTPException(400) used for DROP DATABASE/EXEC etc. Consider 200 across the board for query errors or 400 for both — currently a mix."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AIInterview PDF info row", "issue": "'chars extracted' shows '0.0k' for small PDFs because of (length/1000).toFixed(1). For a ~46-char PDF user sees '0.0k chars extracted' which looks like extraction failed. Display chars directly (e.g. '46 chars') when length < 1000.", "selector": "[data-testid='pdf-upload-area'] sibling info row", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11.py",
+    "/app/test_reports/pytest/pytest_iter11.xml"
+  ],
+  "action_items": [
+    "(Optional) Standardize error contract for /api/sql/execute — pick 200+{error} OR 400 for both query-syntax errors and forbidden patterns; today schema/query errors return 200 while DROP DATABASE returns 400.",
+    "(Cosmetic) AIInterview.jsx line ~430: replace `${(pdfText.length / 1000).toFixed(1)}k chars extracted` with conditional that shows raw chars when <1000 to avoid '0.0k chars' for short PDFs.",
+    "Carry-over: server.py is now ~1230+ lines after PDF/draft/custom-schema additions; modularize into routers (sql, interviews, code, uploads).",
+    "Carry-over from iter8: streak calc in /api/profile/stats queries interview_messages without user_id filter; latent bug.",
+    "Carry-over: THREE.Clock deprecation warning still emitted by ThreeBackground/DSAVisualizer."
+  ],
+  "critical_code_review_comments": [
+    "/api/upload/pdf: `len(reader.pages)` is referenced inside the return after the try/except — if the except path runs, `reader` may be undefined and a 400 is raised, fine. But on success path, large PDFs are read fully into memory and full text is concatenated then sliced to 50k chars — for a 10MB scientific PDF this can briefly hold tens of MB in process RAM per request. Consider streaming/aborting once 50k chars reached.",
+    "/api/sql/execute: opens a fresh in-memory SQLite per request and applies custom_schema each call — fine for now but no caching/per-user persistence; document that custom tables are ephemeral so users don't expect state across runs.",
+    "InterviewCreate.pdf_context has no length guard at API layer; build_system_prompt slices to 8000 chars, but the document is still persisted at full size in MongoDB. Add server-side cap (e.g., 50k) on pdf_context.",
+    "SQLPlayground.jsx: customSchema editor textarea is rendered above the query editor; the .monaco-editor textarea ordering is relied upon implicitly by tests — adding data-testid=schema-editor-textarea / query-editor-textarea on the Monaco wrappers would harden tests.",
+    "AIInterview.jsx handlePdfUpload: no client-side size check before POST — backend rejects >10MB but user sees a loader for the full upload first. Add a quick `file.size > 10*1024*1024` guard with toast.",
+    "/api/code/save accepts arbitrary problem_id (no existence check). Drafts can pile up for invalid IDs. Add 404 if dsa_problems lacks the id — or keep permissive but document it."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 pytest cases passed)",
+    "frontend": "100% (toggle-custom-schema flips ON/OFF and reveals/hides schema editor; pdf-upload-area + pdf-file-input + restrict-to-pdf-toggle all functional with real PDF upload)"
+  },
+  "test_credentials": {
+    "session_token": "test_session_dev_arena_2026",
+    "user_id": "test-user-dev-arena (Test Developer)"
+  },
+  "seed_data_creation": "Generated /tmp/ui_test.pdf via fpdf2 for UI upload test. Created TEST_DRAFT_v2 code draft for prob_00001 (left in DB; small footprint).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 11 fully verified. Tests in /app/backend/tests/test_iteration11.py cover: SQL custom schema (positive, alongside built-in, bad schema, dangerous block, auth), PDF upload (valid via fpdf2, non-PDF rejected, auth), interview pdf_context+restrict_to_pdf persistence, code drafts (save/get/missing/auth), and solved-ids endpoint. Frontend route for SQL Playground is /sql (NOT /sql-playground - nav label is 'SQL Lab'). data-testids confirmed: toggle-custom-schema, pdf-upload-area, pdf-file-input, restrict-to-pdf-toggle, remove-pdf-btn. Note: /api/sql/execute returns 200 with {error:...} for bad SQL/schema (not 400). PDF char-count UI shows '0.0k chars extracted' for small PDFs (cosmetic only).",
+  "rca_of_the_issue": "No bugs found. All requested features (custom SQL schema CREATE+INSERT+query, PDF upload with text extraction, interview PDF context+restriction, code drafts, solved-ids) work correctly end-to-end."
+}

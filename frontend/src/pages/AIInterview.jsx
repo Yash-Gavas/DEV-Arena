@@ -5,7 +5,7 @@ import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import {
   BrainCircuit, Send, ArrowRight, AlertTriangle, Shield, Eye, Loader2,
-  Mic, MicOff, Volume2, VolumeX, Camera, CameraOff, Play, Code2, User
+  Mic, MicOff, Volume2, VolumeX, Camera, CameraOff, Play, Code2, User, FileText, Upload, X as XIcon
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -49,6 +49,10 @@ export default function AIInterview() {
   const [mode, setMode] = useState(interviewId ? 'interview' : 'setup');
   const [role, setRole] = useState('');
   const [jd, setJd] = useState('');
+  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfText, setPdfText] = useState('');
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const [restrictToPdf, setRestrictToPdf] = useState(false);
   const [interview, setInterview] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -285,11 +289,43 @@ export default function AIInterview() {
     doSendMessage(input);
   };
 
+  const handlePdfUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfFile(file);
+    setPdfUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await axios.post(`${API}/upload/pdf`, formData, {
+        withCredentials: true,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setPdfText(res.data.text);
+      setRestrictToPdf(true);
+    } catch (err) {
+      setPdfFile(null);
+      setPdfText('');
+      alert('Failed to upload PDF: ' + (err.response?.data?.detail || 'Unknown error'));
+    }
+    setPdfUploading(false);
+  };
+
+  const removePdf = () => {
+    setPdfFile(null);
+    setPdfText('');
+    setRestrictToPdf(false);
+  };
+
   const startInterview = async () => {
     if (!role.trim()) return;
     setStarting(true);
     try {
-      const res = await axios.post(`${API}/interviews/start`, { role, jd }, { withCredentials: true });
+      const res = await axios.post(`${API}/interviews/start`, {
+        role, jd,
+        pdf_context: restrictToPdf ? pdfText : '',
+        restrict_to_pdf: restrictToPdf
+      }, { withCredentials: true });
       setInterview(res.data.interview);
       setMessages(res.data.messages || []);
       setMode('interview');
@@ -360,6 +396,52 @@ export default function AIInterview() {
                   placeholder="Paste the JD here for a tailored interview..."
                   className="bg-black border-white/10 text-white focus:ring-1 focus:ring-blue-500 min-h-[120px]" />
               </div>
+
+              {/* PDF Upload Option */}
+              <div className="bg-black/50 rounded-md p-4 border border-white/5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs tracking-[0.15em] uppercase font-bold text-zinc-400 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-purple-400" /> Attach Reference Material (optional)
+                  </label>
+                  {pdfFile && (
+                    <button onClick={removePdf} className="text-zinc-500 hover:text-red-400 transition-colors" data-testid="remove-pdf-btn">
+                      <XIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-zinc-500 mb-3">Upload a PDF (textbook, notes, syllabus) — questions will be restricted to this material when enabled.</p>
+
+                {!pdfFile ? (
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-white/10 rounded-md py-4 cursor-pointer hover:border-purple-500/30 hover:bg-purple-600/5 transition-all" data-testid="pdf-upload-area">
+                    <Upload className="w-5 h-5 text-zinc-500" />
+                    <span className="text-sm text-zinc-400">Click to upload PDF (max 10MB)</span>
+                    <input type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} data-testid="pdf-file-input" />
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-3 bg-purple-600/10 border border-purple-500/20 rounded-md px-3 py-2.5">
+                    {pdfUploading ? (
+                      <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-purple-400" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-purple-300 truncate">{pdfFile.name}</p>
+                      <p className="text-[10px] text-zinc-500">
+                        {pdfUploading ? 'Processing...' : `${(pdfText.length / 1000).toFixed(1)}k chars extracted`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {pdfText && (
+                  <label className="flex items-center gap-2 mt-3 cursor-pointer" data-testid="restrict-to-pdf-toggle">
+                    <input type="checkbox" checked={restrictToPdf} onChange={e => setRestrictToPdf(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/20 bg-black text-purple-600 focus:ring-purple-500" />
+                    <span className="text-xs text-zinc-300">Restrict questions to uploaded material only</span>
+                  </label>
+                )}
+              </div>
+
               <div className="bg-black/50 rounded-md p-4 border border-white/5">
                 <p className="text-xs text-zinc-400 mb-3 font-semibold">Interview Rounds:</p>
                 <div className="grid grid-cols-2 gap-2">
