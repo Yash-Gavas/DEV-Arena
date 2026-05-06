@@ -427,7 +427,7 @@ export default function AIInterview() {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-purple-300 truncate">{pdfFile.name}</p>
                       <p className="text-[10px] text-zinc-500">
-                        {pdfUploading ? 'Processing...' : `${(pdfText.length / 1000).toFixed(1)}k chars extracted`}
+                        {pdfUploading ? 'Processing...' : pdfText.length < 1000 ? `${pdfText.length} chars extracted` : `${(pdfText.length / 1000).toFixed(1)}k chars extracted`}
                       </p>
                     </div>
                   </div>
