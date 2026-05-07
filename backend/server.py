@@ -215,7 +215,17 @@ ROUND_GUIDELINES = {
     1: """CRITICAL: Start by introducing yourself briefly as Alex Chen, then IMMEDIATELY ask the candidate to introduce themselves - their background, education, experience, and what excites them about tech. 
 After their introduction, transition to DSA. Ask algorithm/data structure problems with input/output examples. Ask about complexity. 
 When presenting a coding problem, format it clearly with: Problem Title, Description, Examples (Input/Output), and Constraints. Tell the candidate to solve it in the code editor on the right.
-Patterns: sliding window, two pointers, binary search, DFS/BFS, DP, greedy.""",
+
+VARIETY IS MANDATORY: You have 15,000+ problems to choose from. NEVER ask the same problems across interviews. Pick from DIVERSE topics:
+- Arrays: Kadane's algorithm, merge intervals, product of array except self, container with most water, trapping rain water
+- Strings: longest substring without repeating chars, group anagrams, minimum window substring, palindromic substrings
+- Trees: serialize/deserialize, lowest common ancestor, path sum variants, validate BST, level order zigzag
+- Graphs: course schedule, number of islands, shortest path, clone graph, word ladder
+- DP: house robber, longest increasing subsequence, coin change, edit distance, word break
+- Linked Lists: merge k sorted lists, reverse in k-groups, detect cycle, copy with random pointer
+- Stacks/Queues: largest rectangle in histogram, daily temperatures, sliding window maximum
+- Binary Search: search in rotated array, find minimum in rotated, median of two sorted arrays
+NEVER DEFAULT TO 'Valid Parentheses' or 'Two Sum'. Pick problems from the SUGGESTED list provided.""",
     2: """Ask about their most impactful project. Probe technical decisions, architecture choices. Ask about challenges, teamwork, specific contributions.
 Then transition to Core CS: OS (Process vs Thread, Deadlock, Memory), DBMS (ACID, Normalization, Indexing), CN (TCP/UDP, HTTP, DNS).
 IMPORTANT: You MUST also ask SQL queries. Give them a scenario with tables and ask them to write SQL. Examples:
@@ -291,12 +301,49 @@ async def start_interview(data: InterviewCreate, request: Request):
         "restrict_to_pdf": data.restrict_to_pdf or False
     }
     await db.interviews.insert_one(interview)
-    prev_interviews = await db.interview_messages.find(
-        {"role": "interviewer"}, {"_id": 0, "content": 1}
-    ).to_list(500)
+
+    # Get user's past interview questions to avoid repetition
+    user_prev_interviews = await db.interviews.find(
+        {"user_id": user["user_id"], "status": "completed"},
+        {"_id": 0, "interview_id": 1}
+    ).to_list(50)
+    prev_int_ids = [i["interview_id"] for i in user_prev_interviews]
+    prev_questions = []
+    if prev_int_ids:
+        prev_msgs = await db.interview_messages.find(
+            {"interview_id": {"$in": prev_int_ids}, "role": "interviewer"},
+            {"_id": 0, "content": 1}
+        ).to_list(500)
+        prev_questions = [m["content"][:200] for m in prev_msgs]
+
+    # Pick random DSA problems from our bank to suggest to the AI
+    import random
+    dsa_sample = await db.dsa_problems.find(
+        {"difficulty": {"$in": ["Easy", "Medium", "Hard"]}},
+        {"_id": 0, "title": 1, "difficulty": 1, "topic": 1}
+    ).to_list(200)
+    random.shuffle(dsa_sample)
+    suggested_problems = dsa_sample[:15]
+
+    sql_sample = await db.sql_problems.find(
+        {"difficulty": {"$in": ["Easy", "Medium", "Hard"]}},
+        {"_id": 0, "title": 1, "difficulty": 1, "category": 1}
+    ).to_list(100)
+    random.shuffle(sql_sample)
+    suggested_sql = sql_sample[:8]
+
     system_prompt = build_system_prompt(interview, [], 1)
-    if prev_interviews:
-        system_prompt += f"\n\nPrevious interviews - avoid these:\n" + "\n".join([f"- {m['content'][:80]}" for m in prev_interviews[-20:]])
+
+    # Inject strong "do not repeat" instruction with specific previously asked content
+    if prev_questions:
+        banned_snippets = "\n".join([f"- {q}" for q in prev_questions[-30:]])
+        system_prompt += f"\n\n=== PREVIOUSLY ASKED IN PAST INTERVIEWS (DO NOT ASK THESE AGAIN) ===\n{banned_snippets}\n=== END BANNED QUESTIONS ===\nYou MUST ask DIFFERENT questions than the ones listed above. Be creative and pick from a wide variety of DSA topics."
+
+    # Inject suggested problems from our problem bank
+    dsa_list = "\n".join([f"- {p['title']} ({p['difficulty']}, {p['topic']})" for p in suggested_problems])
+    sql_list = "\n".join([f"- {p['title']} ({p['difficulty']}, {p['category']})" for p in suggested_sql])
+    system_prompt += f"\n\n=== SUGGESTED DSA QUESTIONS (pick from these or similar - DO NOT always use the same ones) ===\n{dsa_list}\n\n=== SUGGESTED SQL QUESTIONS (for Round 2) ===\n{sql_list}\n=== END SUGGESTIONS ===\nPick questions RANDOMLY from the above list or create similar ones. NEVER default to 'Two Sum' or 'Valid Parentheses' — those are overused."
+
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"iv_{interview_id}_r1",
                     system_message=system_prompt).with_model("anthropic", "claude-sonnet-4-5-20250929")
     ai_response = await chat.send_message(UserMessage(text="Start the interview. Introduce yourself briefly, then ask the candidate to introduce themselves - their background, education, and experience. Do NOT start with technical questions yet."))
@@ -320,6 +367,14 @@ async def send_interview_message(interview_id: str, data: MessageCreate, request
     await db.interview_messages.insert_one(user_msg)
     all_msgs = await db.interview_messages.find({"interview_id": interview_id}, {"_id": 0}).sort("timestamp", 1).to_list(1000)
     system_prompt = build_system_prompt(interview, all_msgs, interview["current_round"])
+
+    # For DSA/SQL rounds, inject problem variety reminders
+    current_round = interview["current_round"]
+    if current_round in [1, 2]:
+        interviewer_msgs = [m["content"] for m in all_msgs if m["role"] == "interviewer"]
+        already_asked = "\n".join([f"- {q[:150]}" for q in interviewer_msgs])
+        system_prompt += f"\n\nQUESTIONS ALREADY ASKED THIS INTERVIEW (DO NOT REPEAT):\n{already_asked}\nIf you need to ask a new DSA/SQL question, pick something COMPLETELY DIFFERENT from what's above. Vary the topic and difficulty."
+
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"iv_{interview_id}_msg_{uuid.uuid4().hex[:6]}",
                     system_message=system_prompt).with_model("anthropic", "claude-sonnet-4-5-20250929")
     ai_response = await chat.send_message(UserMessage(text=data.content))
