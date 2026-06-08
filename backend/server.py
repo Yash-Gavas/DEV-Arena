@@ -9,6 +9,10 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import PyPDF2, io
+import sys
+import platform
+from multiprocessing import shared_memory
+import numpy as np
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
