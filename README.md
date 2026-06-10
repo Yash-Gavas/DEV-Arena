@@ -1,6 +1,6 @@
 # DEV-Arena
 
-### AI-Powered Technical Interview Preparation Platform
+### AI-Powered Technical Interview Preparation Platform.
 
 A full-stack web application that simulates real technical interviews using AI, provides 15,000+ DSA problems with a LeetCode-style IDE, 580 SQL challenges, interactive 3D data structure visualizations, a gamified badge & ranking system, community forums, and curated CS study resources.
 
